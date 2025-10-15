@@ -1,0 +1,13 @@
+Flask
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-WTF
+Flask-Login
+flask_cors
+gunicorn
+scikit-learn
+google
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-generativeai
