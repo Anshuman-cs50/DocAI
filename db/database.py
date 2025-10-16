@@ -7,7 +7,7 @@ import os
 Base = declarative_base()
 
 # SQLite by default (you can replace with PostgreSQL URI later)
-DB_URL = os.getenv("DATABASE_URL", "sqlite:///health_matrix.db")
+DB_URL = os.getenv("DATABASE_URL", "sqlite:///DocAI.db")
 
 # Create the engine
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})

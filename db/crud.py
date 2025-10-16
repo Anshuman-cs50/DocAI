@@ -2,6 +2,7 @@
 from sqlalchemy.orm import Session
 from db import models
 
+
 # -------------------- USER FUNCTIONS --------------------
 
 def create_user(db: Session, name: str, email: str):
@@ -16,6 +17,7 @@ def get_user_by_id(db: Session, user_id: int):
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
+
 
 # -------------------- CONSULTATION FUNCTIONS --------------------
 
@@ -40,6 +42,13 @@ def get_recent_consultations(db: Session, user_id: int, limit: int = 5):
               .order_by(models.Consultation.updated_at.desc())
               .limit(limit)
               .all())
+
+def get_timeline_for_consultation(db: Session, consultation_id: int):
+    return (db.query(models.ConsultationTimeline)
+              .filter(models.ConsultationTimeline.consultation_id == consultation_id)
+              .order_by(models.ConsultationTimeline.created_at.asc())
+              .all())
+
 
 # -------------------- TIMELINE FUNCTIONS --------------------
 

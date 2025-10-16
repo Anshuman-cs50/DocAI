@@ -1,4 +1,5 @@
 import json
+import os
 import random
 from datetime import datetime
 
@@ -15,7 +16,7 @@ def create_app():
     app = Flask(__name__)
 
     # Load configuration from config.py
-    app.config.from_object("config.Config")
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///DocAI.db')
 
     # Initialize database
     db.init_app(app)

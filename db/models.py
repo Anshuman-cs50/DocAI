@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from db.database import Base
 
+ 
 class User(Base):
     __tablename__ = "users"
 
@@ -13,6 +14,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     consultations = relationship("Consultation", back_populates="user", cascade="all, delete-orphan")
+
 
 class Consultation(Base):
     __tablename__ = "consultations"
@@ -27,6 +29,7 @@ class Consultation(Base):
 
     user = relationship("User", back_populates="consultations")
     timeline_entries = relationship("ConsultationTimeline", back_populates="consultation", cascade="all, delete-orphan")
+
 
 class ConsultationTimeline(Base):
     __tablename__ = "consultation_timeline"
