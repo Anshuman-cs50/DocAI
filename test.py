@@ -1,55 +1,81 @@
-from flask import request, jsonify
-from datetime import datetime
-import db_ops
-from chat_utils import generate_ai_consult_response
+import psycopg2
+from psycopg2.extras import execute_values
+import numpy as np
 
+DB_URI = "postgresql://postgres:0987654321@localhost:5432/DocAI"
 
-
-def consult_endpoint(user_id, user_query):
-    """
-    Handles a full, new consultation request. Always starts a new, completed record.
-    """
+def test_postgres_vector_db():
+    conn, cursor = None, None
     try:
-        
-        if not db_ops.validate_user(user_id):
-            return jsonify({"message": "Unauthorized user"}), 401
+        print("🔍 Connecting to PostgreSQL...")
+        conn = psycopg2.connect(DB_URI)
+        cursor = conn.cursor()
+        print("✅ Connection successful!")
 
-        # 1. Start a new, fresh consultation record
-        consultation_id = db_ops.start_consultation_session(user_id)
-        
-        # 2. Get past data context using db_ops
-        past_summaries = db_ops.get_consultation_summary(user_id, consultation_id)
-        context = " ".join(past_summaries) if past_summaries else ""
+        # Step 1: Check pgvector extension
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        cursor.execute("SELECT extname FROM pg_extension WHERE extname='vector';")
+        if cursor.fetchone():
+            print("✅ pgvector extension available.")
+        else:
+            raise Exception("pgvector extension not found!")
 
-        # 3. Retrieve detailed health matrix 
-        user_health_matrix = db_ops.get_user_health_matrix(user_id, user_query)
+        # Step 2: Drop old test table if exists
+        cursor.execute("DROP TABLE IF EXISTS test_vectors;")
 
-        # 4. Prompt the AI
-        ai_consult_data = generate_ai_consult_response(query=user_query, context=context, health_matrix=user_health_matrix)
-        ai_response_text = ai_consult_data.get("solution_for_user", "No response from AI.")
-        
-        # 5. Store the final result (Summary and set status to completed)
-        summary = f"CONSULTATION QUERY: {user_query}\n---\nAI RESPONSE: {ai_consult_data.get('conversation_summary')}"
-        
-        # Manually update status and summary using raw SQLite access
-        db = db_ops.get_db()
-        cursor = db.cursor()
+        # Step 3: Create test table
         cursor.execute("""
-            UPDATE consultation_records
-            SET summary = ?, status = 'completed', time_completed = ?
-            WHERE consultation_id = ?
-        """, (summary, datetime.utcnow().isoformat(), consultation_id))
-        db.commit()
+            CREATE TABLE test_vectors (
+                id SERIAL PRIMARY KEY,
+                description TEXT,
+                embedding vector(5)
+            );
+        """)
+        print("✅ Test table created.")
 
-        return jsonify({
-            "consultation_id": consultation_id,
-            "ai_consult_response": ai_response_text,
-            "message": "Consultation finalized and stored."
-        }), 200
+        # Step 4: Insert test embeddings
+        print("📥 Inserting test vectors...")
+        test_data = [
+            ("Heart rate check", np.random.rand(5).tolist()),
+            ("Blood sugar levels", np.random.rand(5).tolist()),
+            ("Cholesterol report", np.random.rand(5).tolist())
+        ]
+        execute_values(cursor,
+                       "INSERT INTO test_vectors (description, embedding) VALUES %s",
+                       [(desc, vector) for desc, vector in test_data])
+        conn.commit()
+        print("✅ Inserted 3 records successfully.")
+
+        # Step 5: Fetch one
+        cursor.execute("SELECT * FROM test_vectors LIMIT 1;")
+        print("📄 Sample record:", cursor.fetchone())
+
+        # Step 6: Run similarity search
+        print("🔎 Running vector similarity search...")
+        test_vec = np.random.rand(5).tolist()
+        cursor.execute("""
+            SELECT description, embedding <-> %s::vector AS distance
+            FROM test_vectors
+            ORDER BY distance ASC
+            LIMIT 3;
+        """, (test_vec,))
+        print("🔢 Similarity results:")
+        for row in cursor.fetchall():
+            print("  →", row)
+
+        print("\n🎉 PostgreSQL + pgvector test successful!")
 
     except Exception as e:
-        return jsonify({"error": "Internal Server Error during consult", "details": str(e)}), 500
+        print("❌ Error during test:", e)
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        print("🔒 Connection closed.")
+
+
+if __name__ == "__main__":
+    test_postgres_vector_db()
     
-
-
-print(consult_endpoint(1, "I have been experiencing frequent headaches and dizziness. What could be the cause?"))

@@ -7,10 +7,12 @@ import os
 Base = declarative_base()
 
 # SQLite by default (you can replace with PostgreSQL URI later)
-DB_URL = os.getenv("DATABASE_URL", "sqlite:///DocAI.db")
+DB_URL = os.getenv("DATABASE_URI")
+# DB_URL = "postgresql://postgres:0987654321@localhost:5432/DocAI"
+
 
 # Create the engine
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+engine = create_engine(DB_URL)
 
 # Create a session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -28,3 +30,4 @@ def get_session():
         yield db
     finally:
         db.close()
+
