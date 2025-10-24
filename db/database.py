@@ -8,7 +8,7 @@ Base = declarative_base()
 
 # SQLite by default (you can replace with PostgreSQL URI later)
 DB_URL = os.getenv("DATABASE_URI")
-# DB_URL = "postgresql://postgres:0987654321@localhost:5432/DocAI"
+# DB_URL = "postgresql://admin:0987654321@localhost:5432/DocAI"
 
 
 # Create the engine

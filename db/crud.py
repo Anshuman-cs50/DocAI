@@ -1,6 +1,6 @@
 # db/crud.py
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import Date, func, text, DateTime
 from db import models
 
 
@@ -22,7 +22,8 @@ def get_user_by_email(db: Session, email: str):
 
 # -------------------- CONSULTATION FUNCTIONS --------------------
 
-def create_consultation(db: Session, user_id: int, heading: str, reference: str = None):
+def create_consultation(db: Session, user_id: int, heading: str, reference: int = None):
+    # Ensure reference is int as per FK, not str as in old function signature
     consultation = models.Consultation(user_id=user_id, heading=heading, reference=reference)
     db.add(consultation)
     db.commit()
@@ -44,46 +45,29 @@ def get_recent_consultations(db: Session, user_id: int, limit: int = 5):
               .limit(limit)
               .all())
 
-def get_timeline_for_consultation(db: Session, consultation_id: int):
-    return (db.query(models.ConsultationTimeline)
-              .filter(models.ConsultationTimeline.consultation_id == consultation_id)
-              .order_by(models.ConsultationTimeline.created_at.asc())
-              .all())
-
-
 # -------------------- TIMELINE FUNCTIONS --------------------
 
-def add_timeline_entry(db: Session, consultation_id: int, user_query: str, model_response: str, insights: str = None, embedding=None):
+def add_timeline_entry(db: Session, consultation_id: int, user_query: str, model_response: str, insights: str = None, embedding_vector=None):
+    # 🛠 MODIFIED: Changed argument name 'embedding' to 'embedding_vector'
     entry = models.ConsultationTimeline(
         consultation_id=consultation_id,
         user_query=user_query,
         model_response=model_response,
         insights=insights,
-        embedding=embedding
+        embedding_vector=embedding_vector # Ensure this matches model column
     )
     db.add(entry)
     db.commit()
     db.refresh(entry)
     return entry
 
-def semantic_search(db, user_id: int, query_embedding: list, top_k: int = 5):
-    """
-    Retrieve top-k similar consultation timeline entries for a user based on embedding similarity.
-    """
-    sql = text("""
-        SELECT ct.id, ct.user_query, ct.model_response, (ct.embedding <-> :query_embedding) AS distance
-        FROM consultation_timeline ct
-        JOIN consultations c ON ct.consultation_id = c.id
-        WHERE c.user_id = :user_id
-        ORDER BY distance ASC
-        LIMIT :top_k;
-    """)
-    result = db.execute(sql, {
-        "query_embedding": query_embedding,
-        "user_id": user_id,
-        "top_k": top_k
-    })
-    return [dict(row._mapping) for row in result]
+
+def get_recent_timeline_entries(db: Session, consultation_id: int, limit: int = 5):
+    return (db.query(models.ConsultationTimeline)
+              .filter(models.ConsultationTimeline.consultation_id == consultation_id)
+              .order_by(models.ConsultationTimeline.created_at.desc())
+              .limit(limit)
+              .all())
 
 
 def get_timeline_for_consultation(db: Session, consultation_id: int, k: int = 5):
@@ -92,3 +76,192 @@ def get_timeline_for_consultation(db: Session, consultation_id: int, k: int = 5)
               .order_by(models.ConsultationTimeline.created_at.asc())
               .limit(k)
               .all())
+
+
+# -------------------- USER CONDITION FUNCTIONS --------------------
+
+def add_user_condition(
+    db: Session,
+    user_id: int,
+    condition_name: str,
+    condition_type: str,
+    source_type: str,
+    diagnosis_date: Date = None,
+    is_active: bool = True,
+    notes: str = "",
+    embedding_vector=None,
+    consultation_id: int = None,
+):
+    """Creates a new record for a user's permanent/chronic health condition."""
+    condition = models.UserCondition(
+        user_id=user_id,
+        condition_name=condition_name,
+        condition_type=condition_type,
+        source_type=source_type,
+        diagnosis_date=diagnosis_date,
+        is_active=is_active,
+        notes=notes,
+        embedding_vector=embedding_vector,
+        consultation_id=consultation_id,
+    )
+    db.add(condition)
+    db.commit()
+    db.refresh(condition)
+    return condition
+
+
+def get_user_conditions(db: Session, user_id: int, is_active: bool = None):
+    """Retrieves all (or active/inactive) permanent conditions for a user."""
+    query = db.query(models.UserCondition).filter(models.UserCondition.user_id == user_id)
+    if is_active is not None:
+        query = query.filter(models.UserCondition.is_active == is_active)
+    
+    # Order by condition type and then active status for clarity
+    return query.order_by(models.UserCondition.condition_type.asc(), models.UserCondition.is_active.desc()).all()
+
+
+def update_condition_status(db: Session, condition_id: int, new_status: bool):
+    """Updates the active status of a permanent condition (e.g., condition resolved)."""
+    condition = db.query(models.UserCondition).filter(models.UserCondition.id == condition_id).first()
+    if condition:
+        condition.is_active = new_status
+        db.commit()
+        db.refresh(condition)
+    return condition
+
+
+def delete_user_condition(db: Session, condition_id: int):
+    """Deletes a permanent condition record."""
+    condition = db.query(models.UserCondition).filter(models.UserCondition.id == condition_id).first()
+    if condition:
+        db.delete(condition)
+        db.commit()
+        return True
+    return False
+
+
+# -------------------- VITALS TIME SERIES FUNCTIONS --------------------
+
+def add_vitals_entry(
+    db: Session,
+    user_id: int,
+    metric_name: str,
+    metric_value: float,
+    timestamp: DateTime = None,
+    consultation_id: int = None,
+):
+    """Adds a single measurement point (e.g., heart rate at a specific time) for a user."""
+    if timestamp is None:
+        timestamp = func.now()
+        
+    vitals_entry = models.VitalsTimeSeries(
+        user_id=user_id,
+        metric_name=metric_name,
+        metric_value=metric_value,
+        timestamp=timestamp,
+        consultation_id=consultation_id,
+    )
+    db.add(vitals_entry)
+    db.commit()
+    db.refresh(vitals_entry)
+    return vitals_entry
+
+
+def get_vitals_by_range(
+    db: Session,
+    user_id: int,
+    metric_name: str,
+    start_time: DateTime,
+    end_time: DateTime,
+):
+    """Retrieves a specific vital sign's readings for a user within a time range."""
+    return (db.query(models.VitalsTimeSeries)
+            .filter(
+                models.VitalsTimeSeries.user_id == user_id,
+                models.VitalsTimeSeries.metric_name == metric_name,
+                models.VitalsTimeSeries.timestamp >= start_time,
+                models.VitalsTimeSeries.timestamp <= end_time,
+            )
+            .order_by(models.VitalsTimeSeries.timestamp.asc())
+            .all())
+
+
+def get_latest_vitals(db: Session, user_id: int):
+    """Retrieves the single latest reading for *each* metric for a user."""
+    # This query uses an advanced window function or GROUP BY in pure SQL for efficiency
+    # For simplicity and cross-DB compatibility in SQLAlchemy, we'll use a subquery/filtering approach:
+    
+    # This is often best handled by an optimized pure-SQL query, but here's a working SQLAlchemy approach:
+    subquery = (db.query(
+        models.VitalsTimeSeries.metric_name,
+        func.max(models.VitalsTimeSeries.timestamp).label("max_timestamp")
+    )
+    .filter(models.VitalsTimeSeries.user_id == user_id)
+    .group_by(models.VitalsTimeSeries.metric_name)
+    .subquery())
+
+    return (db.query(models.VitalsTimeSeries)
+            .join(subquery, 
+                  models.VitalsTimeSeries.metric_name == subquery.c.metric_name)
+            .filter(
+                models.VitalsTimeSeries.user_id == user_id,
+                models.VitalsTimeSeries.timestamp == subquery.c.max_timestamp
+            )
+            .all())
+
+
+# -------------------- VECTOR SEARCH FUNCTION --------------------
+
+def semantic_search_records(
+    db: Session, 
+    user_id: int, 
+    query_embedding, 
+    k: int = 5
+):
+    """
+    Performs semantic search across both ConsultationTimeline insights and UserCondition notes.
+    
+    NOTE: This requires the 'vector' extension (e.g., pg_vector) to be enabled 
+    and the '<=>' (distance operator) to be available.
+    """
+    
+    # 1. Search Consultation Timeline
+    timeline_results = (
+        db.query(
+            models.ConsultationTimeline.insights.label("text"),
+            models.ConsultationTimeline.created_at.label("date"),
+            text("'Consultation Insight'").label("type"),
+            (models.ConsultationTimeline.embedding_vector.op('<=>')(query_embedding)).label("distance")
+        )
+        .filter(models.ConsultationTimeline.consultation_id.in_(
+            db.query(models.Consultation.id).filter(models.Consultation.user_id == user_id)
+        ))
+        .order_by(text("distance"))
+        .limit(k)
+    ).subquery()
+
+    # 2. Search User Permanent Conditions
+    condition_results = (
+        db.query(
+            models.UserCondition.notes.label("text"),
+            models.UserCondition.diagnosis_date.label("date"),
+            models.UserCondition.condition_type.label("type"),
+            (models.UserCondition.embedding_vector.op('<=>')(query_embedding)).label("distance")
+        )
+        .filter(models.UserCondition.user_id == user_id)
+        .order_by(text("distance"))
+        .limit(k)
+    ).subquery()
+    
+    # 3. Combine and Final Sort
+    combined_query = db.query(timeline_results).union_all(db.query(condition_results)).subquery()
+
+    # Retrieve top K overall results (e.g., based on distance)
+    final_results = (
+        db.query(combined_query)
+        .order_by(combined_query.c.distance.asc())
+        .limit(k)
+        .all()
+    )
+    
+    return final_results
