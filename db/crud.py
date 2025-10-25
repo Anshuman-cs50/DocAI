@@ -1,6 +1,6 @@
-# db/crud.py
+from typing import Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import Date, func, text, DateTime
+from sqlalchemy import Date, func, text, DateTime, union_all
 from db import models
 
 
@@ -23,19 +23,11 @@ def get_user_by_email(db: Session, email: str):
 # -------------------- CONSULTATION FUNCTIONS --------------------
 
 def create_consultation(db: Session, user_id: int, heading: str, reference: int = None):
-    # Ensure reference is int as per FK, not str as in old function signature
+    # Ensure reference is int as per FK, not str as in old function signature 
     consultation = models.Consultation(user_id=user_id, heading=heading, reference=reference)
     db.add(consultation)
     db.commit()
     db.refresh(consultation)
-    return consultation
-
-def update_consultation_summary(db: Session, consultation_id: int, new_summary: str):
-    consultation = db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
-    if consultation:
-        consultation.summary = new_summary
-        db.commit()
-        db.refresh(consultation)
     return consultation
 
 def get_recent_consultations(db: Session, user_id: int, limit: int = 5):
@@ -44,6 +36,55 @@ def get_recent_consultations(db: Session, user_id: int, limit: int = 5):
               .order_by(models.Consultation.updated_at.desc())
               .limit(limit)
               .all())
+
+def get_consultation_by_id(db: Session, consultation_id: int):
+    return db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
+
+
+def get_unsummarized_timeline_entries(db: Session, consultation_id: int, limit: int = 10):
+    """
+    Retrieves timeline entries for a consultation that were created *after* the consultation's last updated_at timestamp.
+    """
+    consultation = db.query(models.Consultation.updated_at).filter(
+        models.Consultation.id == consultation_id
+    ).first()
+
+    if not consultation:
+        return []
+
+    last_update_time = consultation.updated_at
+
+    return (db.query(models.ConsultationTimeline)
+            .filter(
+                models.ConsultationTimeline.consultation_id == consultation_id,
+                # Filter for entries created AFTER the last summary update
+                models.ConsultationTimeline.created_at > last_update_time
+            )
+            .order_by(models.ConsultationTimeline.created_at.asc())
+            .limit(limit)
+            .all())
+
+
+def update_consultation_summary_and_embedding(
+    db: Session,
+    consultation_id: int,
+    new_summary: str,
+    new_embedding_vector: Optional[List[float]]
+) -> None:
+    """
+    Updates the consultation summary, its vector embedding, and triggers the
+    updated_at timestamp to reflect the new summary.
+    """
+    consultation = db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
+    
+    if consultation:
+        consultation.summary = new_summary
+        consultation.embedding_vector = new_embedding_vector
+        # updated_at will automatically update due to onupdate=datetime.utcnow in the model
+        db.commit()
+        db.refresh(consultation)
+
+    # return consultation
 
 # -------------------- TIMELINE FUNCTIONS --------------------
 
@@ -61,20 +102,17 @@ def add_timeline_entry(db: Session, consultation_id: int, user_query: str, model
     db.refresh(entry)
     return entry
 
-
 def get_recent_timeline_entries(db: Session, consultation_id: int, limit: int = 5):
     return (db.query(models.ConsultationTimeline)
               .filter(models.ConsultationTimeline.consultation_id == consultation_id)
-              .order_by(models.ConsultationTimeline.created_at.desc())
+              .order_by(models.ConsultationTimeline.created_at.desc())  # from latest to oldest
               .limit(limit)
               .all())
 
-
-def get_timeline_for_consultation(db: Session, consultation_id: int, k: int = 5):
+def get_all_timeline_entries(db: Session, consultation_id: int):
     return (db.query(models.ConsultationTimeline)
               .filter(models.ConsultationTimeline.consultation_id == consultation_id)
-              .order_by(models.ConsultationTimeline.created_at.asc())
-              .limit(k)
+              .order_by(models.ConsultationTimeline.created_at.asc())   # from oldest to latest
               .all())
 
 
@@ -110,6 +148,8 @@ def add_user_condition(
     return condition
 
 
+# NOTE: right now there is no implementation for this function in the logic
+# NOTE: later when we write code for the user to access his conditions then this function will be useful
 def get_user_conditions(db: Session, user_id: int, is_active: bool = None):
     """Retrieves all (or active/inactive) permanent conditions for a user."""
     query = db.query(models.UserCondition).filter(models.UserCondition.user_id == user_id)
@@ -120,6 +160,7 @@ def get_user_conditions(db: Session, user_id: int, is_active: bool = None):
     return query.order_by(models.UserCondition.condition_type.asc(), models.UserCondition.is_active.desc()).all()
 
 
+# NOTE: 
 def update_condition_status(db: Session, condition_id: int, new_status: bool):
     """Updates the active status of a permanent condition (e.g., condition resolved)."""
     condition = db.query(models.UserCondition).filter(models.UserCondition.id == condition_id).first()
@@ -130,6 +171,7 @@ def update_condition_status(db: Session, condition_id: int, new_status: bool):
     return condition
 
 
+# NOTE:
 def delete_user_condition(db: Session, condition_id: int):
     """Deletes a permanent condition record."""
     condition = db.query(models.UserCondition).filter(models.UserCondition.id == condition_id).first()
@@ -216,52 +258,76 @@ def semantic_search_records(
     db: Session, 
     user_id: int, 
     query_embedding, 
-    k: int = 5
+    current_consultation_id: int = None, # 🛠 NEW: Parameter to exclude the current consultation
+    k_consultations: int = 2,            # 🛠 NEW: Limit for consultations
+    k_conditions: int = 5                # Limit for permanent conditions
 ):
     """
-    Performs semantic search across both ConsultationTimeline insights and UserCondition notes.
-    
-    NOTE: This requires the 'vector' extension (e.g., pg_vector) to be enabled 
-    and the '<=>' (distance operator) to be available.
+    Performs semantic search across UserCondition notes and Consultation summaries 
+    for relevant health context, excluding the current consultation.
     """
     
-    # 1. Search Consultation Timeline
-    timeline_results = (
-        db.query(
-            models.ConsultationTimeline.insights.label("text"),
-            models.ConsultationTimeline.created_at.label("date"),
-            text("'Consultation Insight'").label("type"),
-            (models.ConsultationTimeline.embedding_vector.op('<=>')(query_embedding)).label("distance")
-        )
-        .filter(models.ConsultationTimeline.consultation_id.in_(
-            db.query(models.Consultation.id).filter(models.Consultation.user_id == user_id)
-        ))
-        .order_by(text("distance"))
-        .limit(k)
-    ).subquery()
-
-    # 2. Search User Permanent Conditions
+    # 1. Search User Permanent Conditions
+    # We retrieve more conditions (k_conditions) as they are highly relevant and static.
     condition_results = (
         db.query(
-            models.UserCondition.notes.label("text"),
+            models.UserCondition.notes.label("text_snippet"),
+            models.UserCondition.condition_name.label("title"),
             models.UserCondition.diagnosis_date.label("date"),
-            models.UserCondition.condition_type.label("type"),
+            text("'User Condition'").label("type"),
             (models.UserCondition.embedding_vector.op('<=>')(query_embedding)).label("distance")
         )
         .filter(models.UserCondition.user_id == user_id)
         .order_by(text("distance"))
-        .limit(k)
-    ).subquery()
+        .limit(k_conditions)
+    ).subquery("conditions")
+
+    # 2. Search Consultation Summaries
+    consultation_query = (
+        db.query(
+            models.Consultation.summary.label("text_snippet"),
+            models.Consultation.heading.label("title"),
+            models.Consultation.created_at.label("date"),
+            text("'Consultation Summary'").label("type"),
+            (models.Consultation.embedding_vector.op('<=>')(query_embedding)).label("distance")
+        )
+        .filter(models.Consultation.user_id == user_id)
+    )
+    
+    # 🛠 IMPLEMENTATION: Logic to exclude the current consultation
+    if current_consultation_id is not None:
+        consultation_query = consultation_query.filter(
+            models.Consultation.id != current_consultation_id
+        )
+
+    consultation_results = (
+        consultation_query
+        .order_by(text("distance"))
+        .limit(k_consultations) # Limit consultation results to 2
+    ).subquery("consultations")
     
     # 3. Combine and Final Sort
-    combined_query = db.query(timeline_results).union_all(db.query(condition_results)).subquery()
+    # Use union_all to combine the results from the two subqueries
+    combined_query = union_all(
+        db.query(condition_results).subquery().select(),
+        db.query(consultation_results).subquery().select()
+    ).alias("combined_records")
 
-    # Retrieve top K overall results (e.g., based on distance)
+    # Retrieve all combined results, sorted by distance for overall relevancy
     final_results = (
         db.query(combined_query)
         .order_by(combined_query.c.distance.asc())
-        .limit(k)
         .all()
     )
     
-    return final_results
+    # Convert results to a list of dictionaries for easier AI consumption
+    return [
+        {
+            "type": r.type,
+            "title": r.title,
+            "snippet": r.text_snippet,
+            "date": r.date.isoformat() if r.date else None, # Format date for clean output
+            "relevance_distance": r.distance
+        }
+        for r in final_results
+    ]
