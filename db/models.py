@@ -31,6 +31,9 @@ class Consultation(Base):
     created_at = Column(DateTime, default=func.now())  
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
+    # Tracking the last time we ran the condition detection LLM
+    last_condition_check_at = Column(DateTime, default=func.now())
+
     user = relationship("User", back_populates="consultations")
     referenced_consultation = relationship("Consultation", remote_side=[id], backref="referencing_consultations", uselist=False)
     timeline_entries = relationship("ConsultationTimeline", back_populates="consultation", cascade="all, delete-orphan")

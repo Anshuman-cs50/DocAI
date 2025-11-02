@@ -2,8 +2,9 @@
 from flask import Blueprint, jsonify, request
 from db.database import SessionLocal
 from db import crud
-from ai import ai, embedding, MemoryManager as mm
+from ai import ai, embedding, MemoryManager as mm, UserConditionManager as ucm
 
+embedder = embedding.MedicalEmbedder()
 main = Blueprint("main", __name__)
 
 
@@ -129,17 +130,17 @@ def consult():
     finally:
         # --- PERSISTENCE BLOCK ---
         if user_query and result:
-            
+
             # 1. Generate the high-density insight text for storage
             # Uses BOTH the user query and model response, plus the summarizer LLM
             insights_text = ai.extract_insights(
                 user_query=user_query,
-                model_response=result["model_response"],
+                model_response=result["model_response"]
             )
             
             # 2. Generate the final embedding vector from the CONCISE INSIGHTS text
             # This is the most accurate vector for future timeline searches.
-            insight_embedding_vector = embedding.generate_embedding(insights_text)
+            insight_embedding_vector = embedder.generate_embedding(insights_text)
 
             # 3. Store the new timeline entry
             try:
@@ -153,14 +154,25 @@ def consult():
                 )
             except Exception as e:
                 return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"})
+
+            # 4. Check for any new conditions to log for the user
+            ucm_response = ucm.check_and_log_user_conditions(
+                db=db,
+                consultation_id=consultation_id,
+                user_health_records_context=result["user_health_records_context"]
+            )
+            if "error" in ucm_response:
+                return ucm_response
+            elif "message" in ucm_response:
+                print(ucm_response["message"])
             
             # 4. Check for the 10-turn threshold and summarize if needed
             mm_response = mm.manage_consultation_memory(db=db, consultation_id=consultation_id)
-            if "success" in mm_response:
-                return jsonify({"message": f"Successfully updated summary for consultation {consultation_id}"})
-            
-            return mm_response
-        
+            if mm_response:
+                if "error" in mm_response:
+                    return mm_response
+                elif "message" in mm_response:
+                    print(mm_response["message"])
 
         db.close()
 

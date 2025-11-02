@@ -1,7 +1,12 @@
-import json
 import os
-import random
 from datetime import datetime
+
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='tensorflow')
 
 from flask import Flask
 from flask_cors import CORS

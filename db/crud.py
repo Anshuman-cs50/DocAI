@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Date, func, text, DateTime, union_all
 from db import models
 
+SIMILARITY_THRESHOLD = 0.5
+MAX_FINAL_CONTEXT_CHUNKS = 4
+
 
 # -------------------- USER FUNCTIONS --------------------
 
@@ -84,7 +87,20 @@ def update_consultation_summary_and_embedding(
         db.commit()
         db.refresh(consultation)
 
-    # return consultation
+
+def get_last_condition_check_time(db: Session, consultation_id: int):
+    consultation = db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
+    if consultation:
+        return consultation.last_condition_check_at
+    return None
+
+def update_last_condition_check_time(db: Session, consultation_id: int):
+    consultation = db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
+    if consultation:
+        consultation.last_condition_check_at = func.now()
+        db.commit()
+        db.refresh(consultation)
+
 
 # -------------------- TIMELINE FUNCTIONS --------------------
 
@@ -114,6 +130,16 @@ def get_all_timeline_entries(db: Session, consultation_id: int):
               .filter(models.ConsultationTimeline.consultation_id == consultation_id)
               .order_by(models.ConsultationTimeline.created_at.asc())   # from oldest to latest
               .all())
+
+def get_timeline_entries_since(db: Session, consultation_id: int, since: DateTime):
+    """Retrieves timeline entries for a consultation created after a specific timestamp."""
+    return (db.query(models.ConsultationTimeline)
+            .filter(
+                models.ConsultationTimeline.consultation_id == consultation_id,
+                models.ConsultationTimeline.created_at > since
+            )
+            .order_by(models.ConsultationTimeline.created_at.asc())
+            .all())
 
 
 # -------------------- USER CONDITION FUNCTIONS --------------------
@@ -147,29 +173,26 @@ def add_user_condition(
     db.refresh(condition)
     return condition
 
-
-# NOTE: right now there is no implementation for this function in the logic
-# NOTE: later when we write code for the user to access his conditions then this function will be useful
-def get_user_conditions(db: Session, user_id: int, is_active: bool = None):
-    """Retrieves all (or active/inactive) permanent conditions for a user."""
-    query = db.query(models.UserCondition).filter(models.UserCondition.user_id == user_id)
-    if is_active is not None:
-        query = query.filter(models.UserCondition.is_active == is_active)
-    
-    # Order by condition type and then active status for clarity
-    return query.order_by(models.UserCondition.condition_type.asc(), models.UserCondition.is_active.desc()).all()
+def get_condition_by_id(db: Session, condition_id: int):
+    """Retrieves a user condition by its ID."""
+    return db.query(models.UserCondition).filter(models.UserCondition.id == condition_id).first()
 
 
-# NOTE: 
-def update_condition_status(db: Session, condition_id: int, new_status: bool):
-    """Updates the active status of a permanent condition (e.g., condition resolved)."""
+def update_user_condition(
+    db: Session,
+    condition_id: int,
+    new_status: bool,
+    notes: str = None
+):
+    """Updates a user's condition record."""
     condition = db.query(models.UserCondition).filter(models.UserCondition.id == condition_id).first()
     if condition:
         condition.is_active = new_status
+        if notes is not None:
+            condition.notes = notes
         db.commit()
         db.refresh(condition)
     return condition
-
 
 # NOTE:
 def delete_user_condition(db: Session, condition_id: int):
@@ -254,71 +277,102 @@ def get_latest_vitals(db: Session, user_id: int):
 
 # -------------------- VECTOR SEARCH FUNCTION --------------------
 
+# Assuming models are imported correctly (e.g., models.UserCondition, models.Consultation)
+# Assuming SIMILARITY_THRESHOLD is defined globally or passed in
+
+# --- Define the Calibrated Parameters ---
+# Based on the Gradient Test, 0.50 is the boundary for "Less Semi-Similar" context.
+# We set the Distance Threshold (1 - Similarity) to 0.50.
+# We set the maximum number of final results (Top-N) to 4.
+
 def semantic_search_records(
     db: Session, 
     user_id: int, 
     query_embedding, 
-    current_consultation_id: int = None, # 🛠 NEW: Parameter to exclude the current consultation
-    k_consultations: int = 2,            # 🛠 NEW: Limit for consultations
-    k_conditions: int = 5                # Limit for permanent conditions
+    current_consultation_id: int = None,
+    k_consultations: int = 20,              # Increased temporary limit to allow filtering later
+    k_conditions: int = 20,                 # Increased temporary limit to allow filtering later
+    SIMILARITY_THRESHOLD_VALUE: float = SIMILARITY_THRESHOLD, # Use the derived threshold
+    MAX_FINAL_CONTEXT_CHUNKS: int = MAX_FINAL_CONTEXT_CHUNKS       # The new N limit for the LLM
 ):
-    """
+    """ 
     Performs semantic search across UserCondition notes and Consultation summaries 
-    for relevant health context, excluding the current consultation.
+    with a hybrid distance/similarity threshold and a final Top-N limit.
     """
     
-    # 1. Search User Permanent Conditions
-    # We retrieve more conditions (k_conditions) as they are highly relevant and static.
-    condition_results = (
+    # 1. CALCULATE THE DISTANCE THRESHOLD
+    # Since Postgres/pgvector uses cosine distance (0=similar, 1=dissimilar), 
+    # a SIMILARITY_THRESHOLD_VALUE of 0.50 converts to a DISTANCE_THRESHOLD of 0.50.
+    DISTANCE_THRESHOLD = 1.0 - SIMILARITY_THRESHOLD_VALUE
+    
+    # --- 1. Search User Permanent Conditions ---
+    # We select records that meet or exceed the distance threshold (i.e., distance <= 0.50)
+    # We include the similarity score for clarity (1 - distance)
+    condition_results_query = (
         db.query(
             models.UserCondition.notes.label("text_snippet"),
             models.UserCondition.condition_name.label("title"),
             models.UserCondition.diagnosis_date.label("date"),
             text("'User Condition'").label("type"),
-            (models.UserCondition.embedding_vector.op('<=>')(query_embedding)).label("distance")
+            (models.UserCondition.embedding_vector.op('<=>')(query_embedding)).label("distance"),
+            (text("1.0 - (models.UserCondition.embedding_vector.op('<=>')(:query_embedding))")).label("similarity_score") # Calculate similarity
         )
         .filter(models.UserCondition.user_id == user_id)
+        # 🌟 APPLYING THE THRESHOLD FILTER HERE 🌟
+        .filter((models.UserCondition.embedding_vector.op('<=>')(query_embedding)) <= DISTANCE_THRESHOLD)
+        # Order by distance, but don't limit yet, we want all candidates above threshold
         .order_by(text("distance"))
-        .limit(k_conditions)
-    ).subquery("conditions")
-
-    # 2. Search Consultation Summaries
+    )
+    
+    # Execute and subquery the conditions that passed the distance threshold
+    condition_results = condition_results_query.limit(k_conditions).subquery("conditions")
+    
+    # --- 2. Search Consultation Summaries ---
     consultation_query = (
         db.query(
             models.Consultation.summary.label("text_snippet"),
             models.Consultation.heading.label("title"),
             models.Consultation.created_at.label("date"),
             text("'Consultation Summary'").label("type"),
-            (models.Consultation.embedding_vector.op('<=>')(query_embedding)).label("distance")
+            (models.Consultation.embedding_vector.op('<=>')(query_embedding)).label("distance"),
+            (text("1.0 - (models.Consultation.embedding_vector.op('<=>')(:query_embedding))")).label("similarity_score") # Calculate similarity
         )
         .filter(models.Consultation.user_id == user_id)
     )
     
-    # 🛠 IMPLEMENTATION: Logic to exclude the current consultation
+    # Exclude the current consultation
     if current_consultation_id is not None:
         consultation_query = consultation_query.filter(
             models.Consultation.id != current_consultation_id
         )
 
-    consultation_results = (
+    consultation_results_query = (
         consultation_query
+        # 🌟 APPLYING THE THRESHOLD FILTER HERE 🌟
+        .filter((models.Consultation.embedding_vector.op('<=>')(query_embedding)) <= DISTANCE_THRESHOLD)
         .order_by(text("distance"))
-        .limit(k_consultations) # Limit consultation results to 2
-    ).subquery("consultations")
+    )
+
+    # Execute and subquery the consultations that passed the distance threshold
+    consultation_results = consultation_results_query.limit(k_consultations).subquery("consultations")
     
-    # 3. Combine and Final Sort
-    # Use union_all to combine the results from the two subqueries
+    # --- 3. Combine, Final Sort, and Apply Top-N Limit ---
+    
+    # Union all results that passed the initial threshold filter
     combined_query = union_all(
         db.query(condition_results).subquery().select(),
         db.query(consultation_results).subquery().select()
     ).alias("combined_records")
 
-    # Retrieve all combined results, sorted by distance for overall relevancy
-    final_results = (
+    # Retrieve and sort ALL results by distance (ASC)
+    final_query = (
         db.query(combined_query)
         .order_by(combined_query.c.distance.asc())
-        .all()
+        # 🌟 APPLYING THE FINAL TOP-N LIMIT HERE 🌟
+        .limit(MAX_FINAL_CONTEXT_CHUNKS)
     )
+    
+    final_results = final_query.all()
     
     # Convert results to a list of dictionaries for easier AI consumption
     return [
@@ -326,8 +380,9 @@ def semantic_search_records(
             "type": r.type,
             "title": r.title,
             "snippet": r.text_snippet,
-            "date": r.date.isoformat() if r.date else None, # Format date for clean output
-            "relevance_distance": r.distance
+            "date": r.date.isoformat() if r.date else None, 
+            "relevance_distance": r.distance,
+            "relevance_similarity": r.similarity_score # Include the score for debugging/LLM context
         }
         for r in final_results
     ]

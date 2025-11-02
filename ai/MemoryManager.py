@@ -4,6 +4,7 @@ from typing import List, Any
 import embedding
 from flask import jsonify
 
+embedder = embedding.MedicalEmbedder()
 llm_summariser = ...
 
 # Define the minimum number of turns that must pass before re-summarization is triggered
@@ -69,7 +70,7 @@ def manage_consultation_memory(
         new_summary = llm_summariser.summarise(summarizer_prompt) 
 
         # 5. Generate the embedding for the NEW summary
-        new_embedding_vector = embedding.generate_embedding(new_summary)
+        new_embedding_vector = embedder.generate_embedding(new_summary)
 
         # 6. Update the Consultation record
         try:
@@ -82,6 +83,6 @@ def manage_consultation_memory(
         except Exception as e:
             return jsonify({"error": f"error updating consultation summary and embedding:\n {str(e)}"})
         
-        return jsonify({"success": f"Successfully updated summary for consultation {consultation_id}"})
+        return jsonify({"message": f"Successfully updated summary for consultation {consultation_id}"})
     
-    return jsonify({"message": f"summary up-to-date. no need for updation"})
+    return False

@@ -4,6 +4,7 @@ import embedding
 
 llm_model = ...  # e.g., MedGemma model instance
 llm_summariser = ...
+embedder = embedding.MedicalEmbedder()
 
 
 # ------------- Helper: format timeline context -------------------
@@ -50,7 +51,7 @@ def generate_consultation_response(
     """
     
     # 1. Generate embedding for user query
-    query_embedding = embedding.generate_embedding(user_query)
+    query_embedding = embedder.generate_embedding(user_query)
 
     # 2. Get relevant user health records (Consultation Summaries and Permanent Conditions)
     user_health_records = crud.semantic_search_records(
@@ -126,7 +127,6 @@ def extract_insights(user_query: str, model_response: str) -> str:
     Args:
         user_query: The text the user submitted.
         model_response: The text the model responded with.
-        llm_summarizer: The function/client wrapper for the summarization LLM.
 
     Returns:
         A concise string summarizing the key finding of this turn (max 2 sentences).

@@ -1,5 +1,13 @@
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='tensorflow')
+
 import numpy as np
-from typing import Dict, Any, List
+import time
+from typing import Dict, Any, List, Tuple
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -26,18 +34,7 @@ class MedicalEmbedder:
             self.model = None
             self.dimension = 768 # Default BERT dimension
 
-    def generate_embedding(self, text: str) -> List[float]:
-        """Generates embedding for the given text."""
-        if not self.model:
-            return [0.0] * self.dimension
-        try:
-            embedding = self.model.encode(text, convert_to_tensor=False)
-            return embedding.tolist()
-        except Exception as e:
-            print(f"Error encoding text: {e}")
-            return [0.0] * self.dimension
-
-    def generate_embedding_for_condition(self, condition: Dict[str, Any]) -> List[float]:
+    def generate_long_format_embedding(self, condition: Dict[str, Any]) -> List[float]:
         """
         Generates the LONG, DESCRIPTIVE vector for the Knowledge Base and Search Queries.
         Format: {notes} {name} {type} (Optimal for contextual search recall).
@@ -144,7 +141,7 @@ if __name__ == "__main__":
     # 2. KB EMBEDDING: Using the LONG FORMAT for all records
     for case in test_cases:
         if case['id'] in [1, 5, 9, 20] or case['id'] > 20: # Only embed necessary cases for testing
-            vector_list = embedder.generate_embedding_for_condition(case)
+            vector_list = embedder.generate_long_format_embedding(case)
             all_vectors[case['id']] = np.array(vector_list)
 
     # 3. SEMANTIC QUALITY CHECK (S-Score and D-Score)
@@ -173,7 +170,7 @@ if __name__ == "__main__":
     }
     
     # QUERY EMBEDDING: Uses the LONG FORMAT for recall
-    query_vector = np.array(embedder.generate_embedding_for_condition(query_case))
+    query_vector = np.array(embedder.generate_long_format_embedding(query_case))
 
     similarity_results = []
     
