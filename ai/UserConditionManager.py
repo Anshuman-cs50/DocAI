@@ -3,9 +3,11 @@ from sqlalchemy import func
 from db import crud
 import embedding
 from flask import jsonify
-from ai import embedding
+from ai import embedding, LLM_module
+from typing import List
+from ai.LLM_module import ConditionAction
 
-llm_summariser = ...
+data_processing_llm = LLM_module.DataProcessingLLM()
 embedder = embedding.MedicalEmbedder()
 
 # define the threshold for condition checking
@@ -40,18 +42,16 @@ def check_and_log_user_conditions(
     summary_context = current_consultation.summary or "No summary available."
     new_entries_context = [entry.model_response for entry in new_entries]
 
-    condition_detection_prompt = f"""
-        
-    {summary_context}
-
-    {new_entries_context}
-
-    {user_health_records_context}
-    """
-
-    # Call the condition detection LLM
+    # --- LLM CALL ---
     try:
-        detected_conditions = llm_summariser.detect_conditions(condition_detection_prompt)
+        # Call the condition detection LLM - Ensure it returns List[ConditionAction]
+        detected_conditions: List[ConditionAction] = data_processing_llm.detect_conditions(
+            summary_context, 
+            new_entries_context, 
+            user_health_records_context
+        )
+        # Filter out 'ignore' modes before processing
+        actionable_conditions = [c for c in detected_conditions if c.mode != 'ignore']
 
     except Exception as e:
         return jsonify({"error": f"error during condition detection LLM call:\n {str(e)}"})
@@ -60,41 +60,45 @@ def check_and_log_user_conditions(
     log_messages = []
     log_errors = []
 
-    for condition in detected_conditions:
-        if condition['mode'] == 'add':
+    # Iterate over Pydantic objects, not dictionaries
+    for condition in actionable_conditions:
+        if condition.mode == 'add':
             try:
-                embedding_vector = embedder.generate_embedding_for_condtition(condition)
+                # Access attributes using dot notation (.condition_name, .condition_type)
+                embedding_vector = embedder.generate_embedding_for_condition(condition)
                 crud.add_user_condition(
                     db,
-                    condition_name=condition['name'],
-                    condition_type=condition['type'],
+                    condition_name=condition.condition_name,
+                    condition_type=condition.condition_type,
                     source_type="consultation",
                     consultation_id=consultation_id,
                     user_id=current_consultation.user_id,
                     diagnosis_date=func.now(),
-                    is_active=condition.get('is_active', True),
-                    notes=condition.get('notes', ""),
+                    is_active=condition.is_active, # Access directly from Pydantic object
+                    notes=condition.notes,
                     embedding_vector=embedding_vector
                 )
-                log_messages.append(f"Added: {condition['name']}")
+                log_messages.append(f"Added: {condition.condition_name}")
             except Exception as e:
-                log_errors.append(f"Error adding {condition['name']}: {str(e)}")
+                log_errors.append(f"Error adding {condition.condition_name}: {str(e)}")
 
-        elif condition['mode'] == 'update':
+        elif condition.mode == 'update':
             try:
-                existing_condition = crud.get_condition_by_id(db, condition['id'])
+                # Use condition.condition_id, which is Optional[int]
+                existing_condition = crud.get_condition_by_id(db, condition.condition_id)
                 if existing_condition:
                     crud.update_user_condition(
                         db,
-                        condition_id=condition['id'],
-                        new_status=condition.get('is_active'),
-                        notes=condition.get('notes')
+                        condition_id=condition.condition_id,
+                        new_status=condition.is_active,
+                        notes=condition.notes
                     )
-                    log_messages.append(f"Updated: {condition['name']}")
+                    log_messages.append(f"Updated: {condition.condition_name} (ID: {condition.condition_id})")
                 else:
-                    log_errors.append(f"Update failed: Condition ID {condition['id']} not found.")
+                    # Log an error if the model proposed an update for a non-existent ID
+                    log_errors.append(f"Update failed: Condition ID {condition.condition_id} not found.")
             except Exception as e:
-                log_errors.append(f"Error updating condition ID {condition['id']}: {str(e)}")
+                log_errors.append(f"Error updating condition ID {condition.condition_id}: {str(e)}")
 
 
     # Update the last condition check time
@@ -106,7 +110,6 @@ def check_and_log_user_conditions(
         )
         log_messages.append("Condition check time updated.")
     except Exception as e:
-        # This is a critical error but shouldn't block returning the rest of the results
         log_errors.append(f"Error updating last condition check time: {str(e)}")
 
     # Combine messages and return the final response

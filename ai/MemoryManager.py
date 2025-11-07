@@ -3,10 +3,10 @@ from db import crud
 from typing import List, Any
 import embedding
 from flask import jsonify
+from ai import LLM_module
 
 embedder = embedding.MedicalEmbedder()
-llm_summariser = ...
-
+data_processing_llm = LLM_module.DataProcessingLLM()
 # Define the minimum number of turns that must pass before re-summarization is triggered
 SUMMARY_UPDATE_THRESHOLD = 10 
 
@@ -15,7 +15,7 @@ def format_timeline_for_summarization(timeline_entries: List[Any]) -> str:
     Formats a list of ConsultationTimeline entries into a clean string 
     for the summarizer LLM to process.
     """
-    context = "--- Conversation Timeline to Summarize ---\n"
+    context = ""
     for entry in timeline_entries:
         # Assuming entry has user_query and model_response attributes
         context += f"USER ({entry.created_at.strftime('%H:%M')}): {entry.user_query}\n"
@@ -51,23 +51,8 @@ def manage_consultation_memory(
         current_consultation = crud.get_consultation_by_id(db, consultation_id)
         existing_summary = current_consultation.summary or "This is the start of the summary."
         
-        summarizer_prompt = f"""
-        You are a clinical summarization engine. Your task is to update the 'EXISTING SUMMARY' 
-        by incorporating the new information from the 'CONVERSATION TIMELINE'.
-        
-        The final summary must be concise, clinically relevant, and accurately reflect all key facts.
-
-        --- EXISTING SUMMARY ---
-        {existing_summary}
-        
-        --- CONVERSATION TIMELINE ---
-        {context_to_summarize}
-        
-        --- NEW CUMULATIVE SUMMARY (Start with key points) ---
-        """
-        
         # 4. Call the Summarization LLM
-        new_summary = llm_summariser.summarise(summarizer_prompt) 
+        new_summary = data_processing_llm.summarise(existing_summary, context_to_summarize) 
 
         # 5. Generate the embedding for the NEW summary
         new_embedding_vector = embedder.generate_embedding(new_summary)

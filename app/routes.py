@@ -2,7 +2,8 @@
 from flask import Blueprint, jsonify, request
 from db.database import SessionLocal
 from db import crud
-from ai import ai, embedding, MemoryManager as mm, UserConditionManager as ucm
+from ai import ai, embedding, MemoryManager as mm, UserConditionManager as ucm, LLM_module
+
 
 embedder = embedding.MedicalEmbedder()
 main = Blueprint("main", __name__)
@@ -133,27 +134,46 @@ def consult():
 
             # 1. Generate the high-density insight text for storage
             # Uses BOTH the user query and model response, plus the summarizer LLM
-            insights_text = ai.extract_insights(
+            insights_text : LLM_module.ExtractionInsights = ai.extract_insights(
                 user_query=user_query,
                 model_response=result["model_response"]
             )
-            
-            # 2. Generate the final embedding vector from the CONCISE INSIGHTS text
-            # This is the most accurate vector for future timeline searches.
-            insight_embedding_vector = embedder.generate_embedding(insights_text)
 
-            # 3. Store the new timeline entry
-            try:
-                crud.add_timeline_entry(
-                    db=db,
-                    consultation_id=consultation_id,
-                    user_query=user_query,
-                    model_response=result["model_response"],
-                    insights=insights_text,
-                    embedding_vector=insight_embedding_vector # Store the insight vector
-                )
-            except Exception as e:
-                return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"})
+            if insights_text.insight_found:
+                insights_text = insights_text.compressed_summary
+
+                # 2. Generate the final embedding vector from the CONCISE INSIGHTS text
+                # This is the most accurate vector for future timeline searches.
+                insight_embedding_vector = embedder.generate_embedding(insights_text)
+
+                # 3. Store the new timeline entry
+                try:
+                    crud.add_timeline_entry(
+                        db=db,
+                        consultation_id=consultation_id,
+                        user_query=user_query,
+                        model_response=result["model_response"],
+                        insights=insights_text,
+                        embedding_vector=insight_embedding_vector # Store the insight vector
+                    )
+                except Exception as e:
+                    return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"})
+            else:
+                # If insight_found is False, only store the raw chat for history, not the embedding.
+                # This prevents polluting the semantic index.
+                try:
+                    crud.add_timeline_entry(
+                        db=db,
+                        consultation_id=consultation_id,
+                        user_query=user_query,
+                        model_response=result["model_response"],
+                        insights="Trivial chat turn - no clinical insight captured.",
+                        embedding_vector=None # Do NOT generate or store an embedding vector
+                    )
+                    print("Stored trivial chat turn without generating an embedding vector.")
+
+                except Exception as e:
+                    return jsonify({"error": f"error adding trivial timeline entry to the database:\n {str(e)}"})
 
             # 4. Check for any new conditions to log for the user
             ucm_response = ucm.check_and_log_user_conditions(
