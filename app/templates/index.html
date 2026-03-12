@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Assistant Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
+        .chat-container { height: calc(100vh - 120px); }
+        .user-message { background-color: #3b82f6; color: white; border-radius: 12px 12px 0 12px; }
+        .model-message { background-color: #ffffff; color: #1f2937; border-radius: 12px 12px 12px 0; border: 1px solid #e5e7eb; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <!-- Primary Application Container -->
+    <div id="app" class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-4 md:p-6">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-3">Clinical Consultation Terminal</h1>
+
+        <!-- Status and Setup Panel -->
+        <div id="status-panel" class="mb-6 p-4 rounded-lg bg-indigo-50 border border-indigo-200">
+            <p class="text-sm font-semibold text-indigo-700">Current Status:</p>
+            <p id="user-display" class="text-sm text-gray-700">User: <span class="font-medium text-gray-900" id="user-id-display">Not Set</span></p>
+            <p id="consult-display" class="text-sm text-gray-700">Consultation: <span class="font-medium text-gray-900" id="consult-id-display">Not Started</span></p>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div id="action-buttons" class="flex flex-wrap gap-3 mb-6">
+            <button id="show-user-form" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition shadow-md">1. Create User</button>
+            <button id="show-consultation-form" class="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-yellow-700 transition shadow-md" disabled>2. Start Consultation</button>
+            <button id="view-history-button" class="bg-gray-400 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-500 transition shadow-md" disabled>3. View History</button>
+            <button id="reset-button" class="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600 transition shadow-md">Reset App</button>
+        </div>
+
+        <!-- Forms (Hidden by default) -->
+        <div id="forms-container">
+            <!-- Create User Form -->
+            <div id="create-user-form" class="hidden p-4 border rounded-lg mb-6 bg-gray-50">
+                <h2 class="text-lg font-semibold mb-3 text-gray-800">Create New User</h2>
+                <input type="text" id="new-user-id" placeholder="User ID (e.g., U123)" class="w-full p-2 border rounded-lg mb-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <input type="text" id="new-user-name" placeholder="Name" class="w-full p-2 border rounded-lg mb-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <input type="email" id="new-user-email" placeholder="Email" class="w-full p-2 border rounded-lg mb-3 focus:ring-indigo-500 focus:border-indigo-500">
+                <button id="submit-user" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">Submit User</button>
+            </div>
+
+            <!-- Create Consultation Form -->
+            <div id="create-consultation-form" class="hidden p-4 border rounded-lg mb-6 bg-gray-50">
+                <h2 class="text-lg font-semibold mb-3 text-gray-800">Start New Consultation</h2>
+                <input type="text" id="consultation-heading" placeholder="Consultation Heading (e.g., Lisinopril Side Effects)" class="w-full p-2 border rounded-lg mb-3 focus:ring-indigo-500 focus:border-indigo-500">
+                <button id="submit-consultation" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">Start Chat</button>
+            </div>
+        </div>
+
+        <!-- Chat Interface -->
+        <div id="chat-interface" class="hidden">
+            <div id="messages-window" class="chat-container overflow-y-auto p-4 space-y-4 rounded-lg bg-gray-100 mb-4 shadow-inner">
+                <!-- Messages will be injected here -->
+            </div>
+
+            <!-- Input Form -->
+            <div class="flex">
+                <input type="text" id="user-input" placeholder="Ask your medical question..." class="flex-grow p-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled>
+                <button id="send-button" class="bg-indigo-600 text-white px-6 py-3 rounded-r-lg font-medium hover:bg-indigo-700 transition disabled:bg-gray-400" disabled>Send</button>
+            </div>
+        </div>
+
+        <!-- Modal for Errors and History -->
+        <div id="app-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white rounded-lg shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6">
+                <div class="flex justify-between items-start mb-4 border-b pb-2">
+                    <h3 id="modal-title" class="text-xl font-bold text-gray-800">Modal Title</h3>
+                    <button onclick="closeModal()" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
+                </div>
+                <div id="modal-content" class="text-gray-700 space-y-3">
+                    <!-- Content injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Global Toast/Alert Message -->
+        <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white p-3 rounded-lg shadow-xl transition-opacity duration-300 opacity-0 z-50">
+            Message goes here.
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const API_BASE_URL = window.location.origin; // Assumes Flask is running on the same origin
+
+        // --- STATE MANAGEMENT ---
+        let state = {
+            userId: localStorage.getItem('user_id') || null,
+            consultationId: localStorage.getItem('consultation_id') || null,
+            isSending: false,
+        };
+
+        // --- UTILITY FUNCTIONS ---
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'fixed bottom-4 right-4 p-3 rounded-lg shadow-xl transition-opacity duration-300 z-50 ' + 
+                              (isError ? 'bg-red-600' : 'bg-gray-800') + ' text-white opacity-100';
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+            }, 3000);
+        }
+
+        function openModal(title, content) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-content').innerHTML = content;
+            document.getElementById('app-modal').classList.remove('hidden');
+            document.getElementById('app-modal').classList.add('flex');
+        }
+
+        function closeModal() {
+            document.getElementById('app-modal').classList.add('hidden');
+            document.getElementById('app-modal').classList.remove('flex');
+        }
+        
+        function updateUI() {
+            const userIdDisplay = document.getElementById('user-id-display');
+            const consultIdDisplay = document.getElementById('consult-id-display');
+            const showConsultationFormBtn = document.getElementById('show-consultation-form');
+            const viewHistoryBtn = document.getElementById('view-history-button');
+            const chatInterface = document.getElementById('chat-interface');
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const showUserFormBtn = document.getElementById('show-user-form');
+
+            // 1. User Status
+            if (state.userId) {
+                userIdDisplay.textContent = state.userId;
+                userIdDisplay.classList.add('text-green-600');
+                showUserFormBtn.textContent = 'User Set';
+                showUserFormBtn.disabled = true;
+                showConsultationFormBtn.disabled = false;
+            } else {
+                userIdDisplay.textContent = 'Not Set';
+                userIdDisplay.classList.remove('text-green-600');
+                showUserFormBtn.textContent = '1. Create User';
+                showUserFormBtn.disabled = false;
+                showConsultationFormBtn.disabled = true;
+            }
+
+            // 2. Consultation Status
+            if (state.consultationId) {
+                consultIdDisplay.textContent = state.consultationId;
+                consultIdDisplay.classList.add('text-green-600');
+                chatInterface.classList.remove('hidden');
+                viewHistoryBtn.disabled = false;
+                userInput.disabled = false;
+                sendButton.disabled = state.isSending;
+                showConsultationFormBtn.textContent = 'Consultation Started';
+                showConsultationFormBtn.disabled = true;
+            } else {
+                consultIdDisplay.textContent = 'Not Started';
+                consultIdDisplay.classList.remove('text-green-600');
+                chatInterface.classList.add('hidden');
+                viewHistoryBtn.disabled = true;
+            }
+
+            // 3. Loading State (Input/Button)
+            if (state.isSending) {
+                userInput.placeholder = "Assistant is processing...";
+                sendButton.textContent = "Processing...";
+            } else {
+                userInput.placeholder = "Ask your medical question...";
+                sendButton.textContent = "Send";
+            }
+        }
+
+        function appendMessage(sender, text, insights = null, isHistory = false) {
+            const messagesWindow = document.getElementById('messages-window');
+            const msgDiv = document.createElement('div');
+            
+            // Apply styling based on sender
+            msgDiv.className = `p-3 max-w-xs md:max-w-md break-words shadow-md transition-all duration-300 ${
+                sender === 'user' ? 'user-message ml-auto' : 'model-message mr-auto'
+            }`;
+            
+            // Add sender label for history
+            let contentHTML = `<span class="text-xs font-semibold ${sender === 'user' ? 'text-indigo-200' : 'text-gray-500'}">${sender.toUpperCase()}</span><br>`;
+            contentHTML += `<p class="mt-1">${text}</p>`;
+
+            // Add insights badge if available (only for model messages)
+            if (insights && insights !== 'Trivial chat turn - no clinical insight captured.' && sender === 'model') {
+                contentHTML += `<div class="mt-2 pt-2 border-t border-gray-200 text-xs text-blue-700 font-medium">
+                                    <span class="inline-block bg-blue-100 px-2 py-1 rounded-full">💡 Insight:</span> ${insights}
+                                </div>`;
+            }
+
+            msgDiv.innerHTML = contentHTML;
+            messagesWindow.appendChild(msgDiv);
+            
+            // Scroll to the latest message, but only smooth scroll if it's a new message
+            messagesWindow.scrollTo({ 
+                top: messagesWindow.scrollHeight, 
+                behavior: isHistory ? 'auto' : 'smooth' 
+            });
+        }
+
+        // --- API CALLS ---
+
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            const url = `${API_BASE_URL}${endpoint}`;
+            const config = {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+            };
+            if (data) {
+                config.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(url, config);
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || result.message || `API call failed with status ${response.status}`);
+                }
+                return result;
+            } catch (error) {
+                showToast(`Error: ${error.message}`, true);
+                throw error;
+            }
+        }
+        
+        // --- EVENT HANDLERS ---
+
+        document.getElementById('reset-button').addEventListener('click', () => {
+            if (confirm('Are you sure you want to reset the application state (User ID and Consultation ID)?')) {
+                localStorage.removeItem('user_id');
+                localStorage.removeItem('consultation_id');
+                state.userId = null;
+                state.consultationId = null;
+                document.getElementById('messages-window').innerHTML = '';
+                document.getElementById('forms-container').querySelectorAll('div').forEach(form => form.classList.add('hidden'));
+                document.getElementById('show-user-form').classList.remove('hidden');
+                showToast('Application state reset.', false);
+                updateUI();
+            }
+        });
+
+        document.getElementById('show-user-form').addEventListener('click', () => {
+            document.getElementById('create-user-form').classList.toggle('hidden');
+            document.getElementById('create-consultation-form').classList.add('hidden');
+        });
+
+        document.getElementById('submit-user').addEventListener('click', async () => {
+            const id = document.getElementById('new-user-id').value.trim();
+            const name = document.getElementById('new-user-name').value.trim();
+            const email = document.getElementById('new-user-email').value.trim();
+
+            if (!id || !name || !email) {
+                showToast('All user fields are required.', true);
+                return;
+            }
+
+            try {
+                const result = await apiCall('/create_user', 'POST', { id, name, email });
+                
+                state.userId = result.user_id;
+                localStorage.setItem('user_id', state.userId);
+                
+                showToast(`User ${result.user_id} created successfully!`);
+                document.getElementById('create-user-form').classList.add('hidden');
+                updateUI();
+            } catch (e) {
+                console.error(e);
+            }
+        });
+
+        document.getElementById('show-consultation-form').addEventListener('click', () => {
+            document.getElementById('create-consultation-form').classList.toggle('hidden');
+            document.getElementById('create-user-form').classList.add('hidden');
+        });
+
+        document.getElementById('submit-consultation').addEventListener('click', async () => {
+            const heading = document.getElementById('consultation-heading').value.trim() || 'New Consultation';
+
+            try {
+                const result = await apiCall('/create_consultation', 'POST', { 
+                    user_id: state.userId, 
+                    heading: heading 
+                });
+                
+                state.consultationId = result.consultation_id;
+                localStorage.setItem('consultation_id', state.consultationId);
+                
+                document.getElementById('messages-window').innerHTML = ''; // Clear chat window
+                showToast(`Consultation #${state.consultationId} started!`);
+                document.getElementById('create-consultation-form').classList.add('hidden');
+                updateUI();
+            } catch (e) {
+                console.error(e);
+            }
+        });
+        
+        async function sendMessage() {
+            const inputField = document.getElementById('user-input');
+            const userQuery = inputField.value.trim();
+
+            if (!userQuery || !state.consultationId || state.isSending) return;
+
+            // 1. Update State and UI for sending
+            state.isSending = true;
+            updateUI();
+            inputField.value = '';
+
+            // 2. Append user message to chat
+            appendMessage('user', userQuery);
+
+            try {
+                // 3. Call the core /consult API
+                const result = await apiCall('/consult', 'POST', {
+                    user_id: state.userId,
+                    consultation_id: state.consultationId,
+                    user_query: userQuery
+                });
+
+                // 4. Retrieve the full history to show the final state, summary, and insights (simulating a refresh)
+                const historyResult = await apiCall(`/get_consultation_history/${state.consultationId}`, 'GET');
+                const lastEntry = historyResult.timeline[historyResult.timeline.length - 1];
+
+                // 5. Append model response and insights
+                appendMessage('model', lastEntry.model_response, lastEntry.insights);
+
+            } catch (e) {
+                // Append error message to chat window
+                appendMessage('model', `Server Error: Failed to get response. See console for details.`, null);
+                console.error(e);
+            } finally {
+                // 6. Reset state and UI
+                state.isSending = false;
+                updateUI();
+            }
+        }
+
+        document.getElementById('send-button').addEventListener('click', sendMessage);
+        document.getElementById('user-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        document.getElementById('view-history-button').addEventListener('click', async () => {
+            if (!state.consultationId) {
+                showToast('Please start a consultation first.', true);
+                return;
+            }
+
+            try {
+                const result = await apiCall(`/get_consultation_history/${state.consultationId}`, 'GET');
+                const { consultation, timeline } = result;
+
+                let historyContent = `
+                    <p class="font-semibold text-lg text-indigo-700">Consultation ID: ${consultation.id}</p>
+                    <p class="font-semibold text-lg text-indigo-700">Heading: ${consultation.heading}</p>
+                    <p class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-blue-900">
+                        <span class="font-bold">Current Summary:</span> ${consultation.summary || 'No summary yet.'}
+                    </p>
+                    <h4 class="text-xl font-bold mt-6 mb-3 border-b pb-1">Timeline Entries (${timeline.length})</h4>
+                    <div class="space-y-4">
+                `;
+
+                timeline.forEach(t => {
+                    const insightsHTML = t.insights && t.insights !== 'Trivial chat turn - no clinical insight captured.'
+                        ? `<p class="text-xs text-green-700 mt-1"><strong>Insight:</strong> ${t.insights}</p>`
+                        : `<p class="text-xs text-gray-500 mt-1">No significant insight captured.</p>`;
+                    
+                    historyContent += `
+                        <div class="p-3 border rounded-lg bg-gray-50 shadow-sm">
+                            <p class="text-sm text-gray-800"><strong>User:</strong> ${t.user_query}</p>
+                            <p class="text-sm text-gray-600 mt-1"><strong>Model:</strong> ${t.model_response}</p>
+                            ${insightsHTML}
+                            <p class="text-xs text-gray-400 mt-2">${new Date(t.created_at).toLocaleString()}</p>
+                        </div>
+                    `;
+                });
+
+                historyContent += '</div>';
+                openModal(`Consultation History: ${consultation.heading}`, historyContent);
+
+            } catch (e) {
+                console.error(e);
+            }
+        });
+
+        // --- INITIALIZATION ---
+        function init() {
+            updateUI();
+            if (state.consultationId) {
+                // Load existing history if a consultation is already set
+                document.getElementById('view-history-button').click();
+                document.getElementById('messages-window').innerHTML = ''; // Clear modal content from chat window
+                showToast(`Loaded existing consultation #${state.consultationId}. Ready to chat!`);
+            } else if (state.userId) {
+                showToast(`User ${state.userId} loaded. Start a consultation.`);
+            } else {
+                document.getElementById('create-user-form').classList.remove('hidden');
+                showToast('Welcome! Please create a user to begin.', false);
+            }
+        }
+        
+        window.onload = init;
+    </script>
+</body>
+</html>

@@ -7,12 +7,22 @@ class MedicalEmbedder:
     """
     Handles embedding generation using a BioBERT model, employing a Dual-Embedding Strategy 
     for optimized performance across both semantic search and synonymy checks.
+    
+    Implemented as a singleton to ensure only one instance (and model load) across the app.
     """
+    _instance = None  # Class variable to hold the single instance
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, model_name: str = "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb"):
-        self.model_name = model_name
-        self.model = None
-        self.dimension = 0
-        self._load_model()
+        if not hasattr(self, 'model'):  # Ensure initialization only happens once
+            self.model_name = model_name
+            self.model = None
+            self.dimension = 0
+            self._load_model()
 
     def _load_model(self):
         """Loads the Sentence Transformer model."""
@@ -20,29 +30,32 @@ class MedicalEmbedder:
             # Use trust_remote_code=True for potential large models
             self.model = SentenceTransformer(self.model_name, trust_remote_code=True)
             self.dimension = self.model.get_sentence_embedding_dimension()
-            print(f"✅ Model loaded: {self.model_name} ({self.dimension}D)")
+            print(f"[OK] Model loaded: {self.model_name} ({self.dimension}D)")
         except Exception as e:
-            print(f"❌ Error loading model {self.model_name}: {e}")
+            print(f"[ERROR] Error loading model {self.model_name}: {e}")
             self.model = None
-            self.dimension = 768 # Default BERT dimension
+            self.dimension = 768  # Default BERT dimension
 
-    def generate_embedding(self, text: str) -> List[float]:
+    def generate_embedding(self, text: str) -> np.ndarray:
         """Generates embedding for the given text."""
         if not self.model:
-            return [0.0] * self.dimension
+            # FIX: Explicitly return a 1D NumPy array for reliability
+            return np.array([0.0] * self.dimension)
         try:
             embedding = self.model.encode(text, convert_to_tensor=False)
-            return embedding.tolist()
+            # Ensure the output is flattened and converted to a NumPy array, not a list
+            return np.array(embedding).flatten() 
         except Exception as e:
             print(f"Error encoding text: {e}")
-            return [0.0] * self.dimension
+            return np.array([0.0] * self.dimension)  # Return 1D NumPy array
 
-    def generate_embedding_for_condition(self, condition: Dict[str, Any]) -> List[float]:
+    def generate_embedding_for_condition(self, condition: Dict[str, Any]) -> np.ndarray:
         """
         Generates the LONG, DESCRIPTIVE vector for the Knowledge Base and Search Queries.
         Format: {notes} {name} {type} (Optimal for contextual search recall).
         """
-        if not self.model: return [0.0] * self.dimension
+        if not self.model: 
+            return np.array([0.0] * self.dimension)  # Return 1D NumPy array
             
         condition_name = condition.get('name', 'unknown condition')
         condition_type = condition.get('type', 'unspecified')
@@ -53,17 +66,18 @@ class MedicalEmbedder:
         
         try:
             embedding = self.model.encode(embedding_text, convert_to_tensor=False)
-            return embedding.tolist()
+            return np.array(embedding).flatten()
         except Exception as e:
             print(f"Error encoding long embedding for '{condition_name}': {e}")
-            return [0.0] * self.dimension 
+            return np.array([0.0] * self.dimension)  # Return 1D NumPy array
 
     def generate_high_focus_embedding(self, condition: Dict[str, Any]) -> List[float]:
         """
         Generates the SHORT, HIGH-FOCUS vector for Synonymy Checks (S-Score).
         Format: The patient has {name}. (Optimal for synonym precision).
         """
-        if not self.model: return [0.0] * self.dimension
+        if not self.model: 
+            return [0.0] * self.dimension
             
         condition_name = condition.get('name', 'unknown condition')
         

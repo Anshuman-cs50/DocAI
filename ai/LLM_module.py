@@ -3,13 +3,17 @@ from typing import List, Dict, Any, Optional, Literal
 from flask import json
 from gradio_client import Client
 import requests
+import re
+
 # Assuming RAG_SYSTEM_PROMPT_TEMPLATE and other necessary imports are available
 
 # --- IMPORTANT: Placeholder for your LIVE Gradio URL ---
 # You must update this URL every time your Colab session restarts!
-COLAB_GRADIO_URL = os.environ.get("GRADIO_API_URL", None) 
+# COLAB_GRADIO_URL = os.environ.get("GRADIO_API_URL", None) 
+COLAB_GRADIO_URL = os.environ.get("GRADIO_API_URL") 
 
-HF_API_TOKEN = os.environ.get("HF_API_TOKEN", None)
+# HF_API_TOKEN = os.environ.get("HF_API_TOKEN", None)
+HF_API_TOKEN = os.environ.get("HF_API_TOKEN")
 # Note: You should set GRADIO_API_URL in your environment for production use, 
 # or hardcode the temporary URL for quick testing.
 
@@ -44,20 +48,6 @@ class ConditionAction(BaseModel):
     # Fields required for UPDATING an existing condition
     condition_id: Optional[int] = Field(
         None, description="The internal database ID of the existing condition to update (required for 'update' mode)."
-    )
-    
-    # Fields used for both ADD or UPDATE
-    icd_code_estimate: Optional[str] = Field(
-        None, description="The estimated ICD-10 code (e.g., R05 for cough)."
-    )
-    is_active: bool = Field(
-        True, description="The current status of the condition: True if ongoing/new, False if resolved/inactive."
-    )
-    notes: str = Field(
-        description="Brief (max 1 sentence) clinical notes on the source of the finding."
-    )
-    certainty_level: float = Field(
-        description="A confidence score (0.0 to 1.0) on the certainty of this action based on the analyzed text."
     )
 
 
@@ -164,6 +154,24 @@ class ConsultationLLM:
         except Exception as e:
             print(f"Warning: Could not initialize Gradio Client. Ensure current URL ({self.gradio_url}) is correct. Error: {e}")
             self.client = None
+
+    def update_gradio_url(self, new_url: str) -> bool:
+        """
+        Hot-reloads the Gradio client with a new URL.
+        Called by the /update_gradio_url endpoint so a new Kaggle session URL
+        takes effect without restarting the Flask server.
+        Returns True on success, False on failure.
+        """
+        print(f"[INFO] Updating Gradio URL: {self.gradio_url} → {new_url}")
+        try:
+            new_client = Client(new_url)
+            self.client = new_client
+            self.gradio_url = new_url
+            print(f"[OK] Gradio client successfully re-initialized at: {new_url}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to connect to new Gradio URL ({new_url}): {e}")
+            return False
             
     def generate_consultation_response(
         self,
@@ -213,248 +221,110 @@ class ConsultationLLM:
 
         except Exception as e:
             return f"Error connecting to Gradio API at {self.gradio_url}: {e}"
-
+        
 
 class DataProcessingLLM:
-    """Handles structured data extraction and summarization."""
     def __init__(self, model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct"):
         self.model_name = model_name
         self.api_url = f"https://api-inference.huggingface.co/models/{self.model_name}"
-        # Added check for Gradio URL as well for completeness
-        if HF_API_TOKEN is None:
-            print("🛑 WARNING: HF_API_TOKEN is not set in environment variables. Data Processing API calls will fail.")
-        if COLAB_GRADIO_URL is None:
-             print("⚠️ WARNING: GRADIO_API_URL is not set.")
+        
+        # Verify tokens (assuming these are defined in your env/globals)
+        if 'HF_API_TOKEN' not in globals() or not HF_API_TOKEN:
+            print("[WARNING] HF_API_TOKEN is not set. API calls will fail.")
+
+    def _clean_and_parse_json(self, raw_text: str):
+        """Extracts JSON from text that might contain markdown or chatter."""
+        try:
+            # Use regex to find the first '{' or '[' and the last '}' or ']'
+            match = re.search(r'(\{.*\}|\[.*\])', raw_text, re.DOTALL)
+            if match:
+                return json.loads(match.group(1))
+            return json.loads(raw_text)
+        except (AttributeError) as e:
+            print(f"[ERROR] JSON Parsing failed: {e}")
+            return None
 
     def _call_hf_api(self, prompt: str, schema_json: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Internal method to call the Hugging Face Inference API.
-        
-        It conditionally configures the payload for structured JSON output 
-        (using the 'response_format' parameter) if a schema is provided.
-        
-        Args:
-            prompt: The full prompt text to send to the LLM.
-            schema_json: The Pydantic model's .schema() output (as a dictionary) 
-                         if structured JSON is required, otherwise None.
-                         
-        Returns:
-            The raw generated text or JSON string from the model, or an error message.
-        """
-        if not HF_API_TOKEN:
-            return '{"error": "HF_API_TOKEN not configured."}'
-
-        # 1. Define base payload parameters
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 1024,
-                "temperature": 0.1,  # Low temperature is best for factual extraction/summarization
-                "return_full_text": False
-            }
-        }
-        
-        # 2. Add JSON structure request if a schema is provided
-        if schema_json:
-            # Llama 3 models support the 'response_format' parameter for guaranteed JSON output
-            payload["parameters"]["response_format"] = {
-                "type": "json_object",
-                "schema": schema_json
-            }
-        
-        # 3. Define headers using the API token
         headers = {
             "Authorization": f"Bearer {HF_API_TOKEN}",
             "Content-Type": "application/json"
         }
         
-        # 4. Execute the API call
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 1024,
+                "temperature": 0.1, # Keep low for extraction accuracy
+                "return_full_text": False
+            }
+        }
+        
         try:
-            # self.api_url should be defined in __init__ (e.g., https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct)
-            response = requests.post(self.api_url, headers=headers, json=payload)
-            response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-            
-            # HF API returns a list containing one dictionary result
+            response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
             result = response.json()
-            if isinstance(result, list) and result:
-                # The response text, which should be the generated output/JSON string
-                return result[0].get('generated_text', '').strip()
             
-            # Handle cases where the response structure is unexpected
-            return f'{{"error": "Unexpected API response structure: {str(result)}"}}'
-        
-        except requests.exceptions.HTTPError as e:
-            # Log specific HTTP errors (e.g., model loading, invalid input)
-            error_details = response.json().get("error", str(e))
-            print(f"API HTTP Error ({response.status_code}): {error_details}")
-            return f'{{"error": "API HTTP Request Failed: {error_details}"}}'
-            
-        except requests.exceptions.RequestException as e:
-            # Log general connection errors
-            print(f"API Connection Error: {e}")
-            return f'{{"error": "API Connection Failed: {e}"}}'
-
-    def detect_condition(self, summary_context: str, new_entries_context: List[str], user_health_records_context: List[Dict[str, Any]]) -> List[ConditionAction]:
-        # ... (Context formatting remains the same) ...
-
-        # 2. Format the full prompt using the template and the Pydantic schema
-        prompt = CONDITION_DETECTION_PROMPT_TEMPLATE.format(
-            summary_context=summary_context,
-            new_entries_context=new_entries_context,
-            user_health_records_context=user_health_records_context,
-            schema_json=ConditionAction.model_json_schema()
-        )
-
-        # 3. Call the API (CRITICAL FIX HERE: Use .schema() instead of .schema_json())
-        raw_json = self._call_hf_api(prompt, schema_json=ConditionAction.model_json_schema()) # FIXED
-        
-        # ... (Parsing and validation remain the same) ...
-        try:
-            data = json.loads(raw_json)
-            if not isinstance(data, list):
-                data = [data]
-            return [ConditionAction(**item) for item in data]
-        except Exception as e:
-            print(f"Failed to parse JSON for detect_condition: {e}. Raw output: {raw_json}")
-            return []
-
-
-    def summarise(
-        self, 
-        existing_summary: str, 
-        # CRITICAL FIX HERE: Reverting type to the robust list of dicts for conversation history
-        new_timeline_entries: List[Dict[str, str]] 
-    ) -> str:
-        """
-        Generates a new, cumulative summary by combining the existing summary 
-        with recent conversation turns via the Hugging Face API.
-        """
-        
-        # 1. Format the new timeline entries into a readable string
-        timeline_context = ""
-        for entry in new_timeline_entries:
-            # Assuming entries contain 'user_query' and 'model_response' keys (adjust keys if needed)
-            timeline_context += f"User: {entry.get('user_query', 'N/A')}\n"
-            timeline_context += f"Assistant: {entry.get('model_response', 'N/A')}\n"
-        
-        if not timeline_context:
-            return existing_summary
-
-        # 2. Format the final prompt
-        prompt = SUMMARIZATION_PROMPT_TEMPLATE.format(
-            existing_summary=existing_summary or "None.",
-            conversation_timeline=timeline_context
-        )
-
-        # 3. Call the API (Passing schema_json=None for text generation)
-        try:
-            raw_text = self._call_hf_api(prompt, schema_json=None) 
-            
-            # Check for error message returned by _call_hf_api
-            if '{"error":' in raw_text:
-                 raise Exception(raw_text)
-
-            return raw_text.strip().replace('"', '').replace("'", "")
+            # HF Router returns a list of dicts
+            raw_output = result[0].get('generated_text', '') if isinstance(result, list) else result.get('generated_text', '')
+            return raw_output.strip()
             
         except Exception as e:
-            print(f"Error during summarization LLM call: {e}")
-            return existing_summary
+            print(f"API Call Failed: {e}")
+            return f'{{"error": "{str(e)}"}}'
 
     def extract_insights(self, user_query: str, model_response: str) -> ExtractionInsights:
-        # ... (This method is fine, as it correctly uses .schema() for the API call) ...
-        
-        # 1. Format the full prompt using the template and the Pydantic schema
         prompt = INSIGHTS_EXTRACTION_PROMPT_TEMPLATE.format(
             user_query=user_query,
             model_response=model_response,
             schema_json=ExtractionInsights.model_json_schema()
         )
+        
+        raw_text = self._call_hf_api(prompt, schema_json=ExtractionInsights.model_json_schema())
+        data = self._clean_and_parse_json(raw_text)
+        
+        if not data:
+            return ExtractionInsights(insight_found=False)
+            
+        return ExtractionInsights(**data)
 
-        # 2. Call the API (Correctly using .schema() for the API payload)
-        raw_json = self._call_hf_api(prompt, schema_json=ExtractionInsights.model_json_schema()) # Correct
+    def detect_condition(self, summary_context: str, new_entries_context: List[str], user_health_records_context: List[Dict[str, Any]]) -> List[ConditionAction]:
+        # Handle list vs string formatting
+        new_entries_str = "\n".join(new_entries_context) if isinstance(new_entries_context, list) else str(new_entries_context)
+        user_health_str = json.dumps(user_health_records_context, indent=2)
 
-        # ... (Parsing and validation remain the same) ...
-        try:
-            data = json.loads(raw_json)
-            return ExtractionInsights(**data)
-        except Exception as e:
-            print(f"Failed to parse JSON for extract_insights: {e}. Raw output: {raw_json}")
-            # Return a default/error structure
-            return ExtractionInsights(
-                insight_found=False,
-                compressed_summary="Extraction failed due to parsing error.",
-                primary_condition_or_symptom="Unknown Error",
-                icd_codes_extracted=[]
-            )
+        prompt = CONDITION_DETECTION_PROMPT_TEMPLATE.format(
+            summary_context=summary_context,
+            new_entries_context=new_entries_str,
+            user_health_records_context=user_health_str,
+            schema_json=ConditionAction.model_json_schema()
+        )
 
-# if __name__ == "__main__":
-#     # --- Configuration ---
-#     # !!! IMPORTANT: REPLACE THIS with your LIVE, temporary Gradio URL from Colab !!!
-#     LIVE_GRADIO_URL = "https://824aee39f4227272a5.gradio.live/" 
+        raw_text = self._call_hf_api(prompt, schema_json=ConditionAction.model_json_schema())
+        data = self._clean_and_parse_json(raw_text)
 
-#     if LIVE_GRADIO_URL == "YOUR_LIVE_GRADIO_URL_HERE":
-#         print("🛑 WARNING: Please replace 'YOUR_LIVE_GRADIO_URL_HERE' with your actual Gradio link from Colab.")
-#         # We can't proceed with the live call without the correct URL.
-    
-#     # --- 1. Instantiate the remote LLM client ---
-#     consultation_llm = ConsultationLLM(gradio_url=LIVE_GRADIO_URL) 
+        if not data: return []
+        
+        # Ensure result is a list even if LLM returned a single object
+        items = data if isinstance(data, list) else [data]
+        return [ConditionAction(**item) for item in items]
 
-#     # --- 2. Define Context Placeholders (Synthetic Data) ---
-    
-#     current_consultation_context = (
-#         "Patient Name: Anshuman. Current Chief Complaint: New onset of persistent cough and mild chest tightness."
-#     )
+    def summarise(self, existing_summary: str, new_timeline_entries: List[Dict[str, str]]) -> str:
+        timeline_context = ""
+        for entry in new_timeline_entries:
+            timeline_context += f"User: {entry.get('user_query', 'N/A')}\nAssistant: {entry.get('model_response', 'N/A')}\n"
+        
+        if not timeline_context: return existing_summary
 
-#     timeline_context = (
-#         "User: It started about 3 days ago, and yes, I'm taking the Lisinopril for my blood pressure.\n"
-#         "MedGemma: Thank you. Do you recall any previous times you had a prolonged cough?"
-#     )
+        prompt = SUMMARIZATION_PROMPT_TEMPLATE.format(
+            existing_summary=existing_summary or "None.",
+            conversation_timeline=timeline_context
+        )
 
-#     context_list: List[Dict[str, Any]] = [
-#         {
-#             "type": "Medication Record",
-#             "title": "Lisinopril Prescription",
-#             "snippet": "Patient started on Lisinopril 10mg daily on 2024-03-15 for essential hypertension. Side effect profile includes dry, persistent cough in <5% of users. Advised to monitor for this.",
-#             "relevance_distance": 0.2291,
-#             "relevance_similarity": 0.7709
-#         },
-#         {
-#             "type": "Consultation Summary",
-#             "title": "Annual Physical 2024",
-#             "snippet": "No cardiac murmurs noted. Lungs were clear to auscultation. Patient advised to maintain low-sodium diet and continue blood pressure management.",
-#             "relevance_distance": 0.3148,
-#             "relevance_similarity": 0.6852
-#         },
-#         {
-#             "type": "Diagnostic Report",
-#             "title": "Chest X-Ray 2023",
-#             "snippet": "Chest X-ray clear. No signs of consolidation, fluid, or cardiomegaly.",
-#             "relevance_distance": 0.4489,
-#             "relevance_similarity": 0.5511
-#         },
-#     ]
-
-#     user_query = "This cough is really getting annoying and I also feel a little tight in the chest. Should I stop taking my Lisinopril immediately?"
-    
-#     # --- 3. Call the function ---
-#     print("\n" + "="*50)
-#     print("🤖 Calling Remote MedGemma via Gradio API...")
-#     print(f"Target URL: {LIVE_GRADIO_URL}")
-#     print("="*50)
-
-#     response = consultation_llm.generate_consultation_response(
-#         query=user_query,
-#         context_list=context_list,
-#         current_consultation_context=current_consultation_context,
-#         timeline_context=timeline_context
-#     )
-
-#     print("\n" + "="*50)
-#     print("✅ MEDGEMMA GENERATED RESPONSE (from Colab API):")
-#     print("="*50)
-#     print(response)
-#     print("="*50)
-
+        raw_text = self._call_hf_api(prompt)
+        # We DON'T clean JSON here because summary is just a string
+        # BUT we strip common LLM artifacts
+        clean_summary = raw_text.strip().split("---")[-1].strip() 
+        return clean_summary if clean_summary else existing_summary
 
 if __name__ == "__main__":
     # Note: Since this block is meant for testing, we will mock the
@@ -516,67 +386,21 @@ if __name__ == "__main__":
 
             return '{"error": "No mock response defined for this prompt."}' # This is the fall-through error that was causing the failure.
 
-    llm_processor = MockDataProcessingLLM()
-
-    print("\n=========================================================================================")
-    print("🚀 STARTING DataProcessingLLM TEST BLOCK")
-    print("=========================================================================================")
-
-    # --- TEST 1: extract_insights ---
-    print("\n### 1. TESTING INSIGHTS EXTRACTION")
-    user_query_1 = "I think my new blood pressure pill, the Lisinopril 5mg, is giving me a constant dry cough. Should I stop it?"
-    model_response_1 = "Based on your medical history, a dry cough is a common side effect of Lisinopril. Please discontinue the medication immediately and contact your primary care physician to discuss switching to an alternative such as Losartan."
+    print("--- Starting DocAI DataProcessingLLM Test ---")
     
-    insights = llm_processor.extract_insights(user_query_1, model_response_1)
+    # Initialize the LLM class
+    processor = DataProcessingLLM()
     
-    print("\n--- Insight Result ---")
+    # Test Data
+    test_query = "I have been feeling a sharp pain in my lower back for three days."
+    test_response = "It sounds like you might have acute lower back pain (ICD-10: M54.5). I recommend rest and monitoring."
+
+    print(f"\n[TEST 1] Extracting Insights...")
+    insights = processor.extract_insights(test_query, test_response)
+
     print(f"Insight Found: {insights.insight_found}")
-    print(f"Condition:     {insights.primary_condition_or_symptom}")
-    print(f"Summary:       {insights.compressed_summary}")
-    print(f"ICD Codes:     {insights.icd_codes_extracted}")
-    print("-" * 20)
+    print(f"Summary: {insights.compressed_summary}")
+    print(f"Condition: {insights.primary_condition_or_symptom}")
+    print(f"ICD Codes: {insights.icd_codes_extracted}")
 
-
-    # --- TEST 2: detect_condition ---
-    print("\n### 2. TESTING CONDITION DETECTION (ADD/IGNORE)")
-    summary_context_2 = "Initial consultation summary. Patient is a 55-year-old male with a history of Grade 1 Hypertension (diagnosed 2 years ago) currently managed with diet and exercise."
-    new_entries_context_2 = [model_response_1] # Use the response from Test 1 as new entry
-    user_health_records_context_2 = [
-        {"type": "Condition", "title": "Hypertension (Grade 1)", "snippet": "Diagnosed in 2023. Currently controlled with lifestyle changes. ID: 101"},
-        {"type": "Medication", "title": "Lisinopril 5mg", "snippet": "Started 3 days ago for BP management. ID: 205"}
-    ]
-    
-    conditions = llm_processor.detect_condition(
-        summary_context_2,
-        new_entries_context_2,
-        user_health_records_context_2
-    )
-    
-    print("\n--- Condition Detection Result ---")
-    print(f"Detected {len(conditions)} potential action(s):")
-    for c in conditions:
-        print(f"  - Action:    {c.mode.upper()} (Certainty: {c.certainty_level})")
-        print(f"    Name:      {c.condition_name}")
-        print(f"    Type:      {c.condition_type}")
-        if c.condition_id is not None:
-            print(f"    DB ID:     {c.condition_id}")
-    print("-" * 20)
-    
-    
-    # --- TEST 3: summarise ---
-    print("\n### 3. TESTING CUMULATIVE SUMMARIZATION")
-    existing_summary_3 = "Patient initiated consult due to new diagnosis of Grade 1 Hypertension. Started Lisinopril 5mg 3 days ago."
-    new_timeline_entries_3 = [
-        {"query": user_query_1, "response": model_response_1}, # The turn from Test 1
-        {"query": "What about Losartan? Is that safer?", "response": "Losartan is an ARB, which works differently and typically does not cause the same cough side effect. It is a suitable alternative for your blood pressure."}
-    ]
-    
-    new_summary = llm_processor.summarise(existing_summary_3, new_timeline_entries_3)
-    
-    print("\n--- Summarization Result ---")
-    print("--------------------------------------------------------------------------------------------------------------------------------")
-    print(new_summary)
-    print("--------------------------------------------------------------------------------------------------------------------------------")
-    print("\n=========================================================================================")
-    print("✅ DataProcessingLLM MOCK TESTS COMPLETE")
-    print("=========================================================================================")
+    print("\n--- Test Complete ---")

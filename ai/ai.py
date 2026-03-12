@@ -1,8 +1,11 @@
-from db import crud
-from embedding import MedicalEmbedder
-from LLM_module import ConsultationLLM, DataProcessingLLM, ExtractionInsights
+import numpy as np
 
-# initialising LLM models and embedder
+from db import crud
+from .embedding import MedicalEmbedder
+from .LLM_module import ConsultationLLM, DataProcessingLLM, ExtractionInsights
+
+# initialising LLM models and embedder (module-level singletons)
+# routes.py can access these directly for hot-reloading, e.g. ai.consultation_llm.update_gradio_url(url)
 consultation_llm = ConsultationLLM()
 data_processing_llm = DataProcessingLLM()
 embedder = MedicalEmbedder()
@@ -53,6 +56,21 @@ def generate_consultation_response(
     
     # 1. Generate embedding for user query
     query_embedding = embedder.generate_embedding(user_query)
+    # print(f"Raw embedding type: {type(query_embedding)}, shape: {np.array(query_embedding).shape}")  # Debug
+
+
+    if not isinstance(query_embedding, np.ndarray):
+        query_embedding = np.array(query_embedding)
+    # print(f"After np.array: shape {query_embedding.shape}")  # Debug
+
+
+    query_embedding = query_embedding.flatten()
+    # print(f"After flatten: shape {query_embedding.shape}")  # Debug
+
+    # Convert numpy array to pure Python list for pgvector compatibility
+    # Ensure all elements are Python floats (not numpy float32/float64)
+    query_embedding = [float(x) for x in query_embedding.tolist()]
+    # print(f"Final list length: {len(query_embedding)}")  # Debug
 
     # 2. Get relevant user health records (Consultation Summaries and Permanent Conditions)
     user_health_records = crud.semantic_search_records(
@@ -100,7 +118,7 @@ def generate_consultation_response(
 
 
 # ------------- Extract insights from response ----------------
-def extract_insights(user_query: str, model_response: str) -> str:
+def extract_insights(user_query: str, model_response: str) -> ExtractionInsights:
     """
     Uses an LLM to generate a concise, high-density insight from a single 
     user-model turn for vector indexing.
@@ -110,19 +128,24 @@ def extract_insights(user_query: str, model_response: str) -> str:
         model_response: The text the model responded with.
 
     Returns:
-        A concise string summarizing the key finding of this turn (max 2 sentences).
+        ExtractionInsights object with insight details, or default if LLM fails.
     """
 
-    # Call the summarization LLM
-    # NOTE: You may use a different LLM instance here (e.g., gemini-2.5-flash)
-    # for speed, as this runs synchronously during the consultation.
+    try:
+        # Call the insights extraction LLM
+        insights: ExtractionInsights = data_processing_llm.extract_insights(
+            user_query=user_query,
+            model_response=model_response
+        )
+        return insights
     
-    # Placeholder for actual LLM call
-    insights: ExtractionInsights = data_processing_llm.extract_insights(
-        user_query=user_query,
-        model_response=model_response
-    )
-
-    # Ensure the result is clean (e.g., remove quotes or leading/trailing whitespace)
-    return insights
+    except Exception as e:
+        print(f"[WARNING] Failed to extract insights: {str(e)}")
+        # Return default ExtractionInsights on failure
+        return ExtractionInsights(
+            insight_found=False,
+            compressed_summary="",
+            primary_condition_or_symptom="",
+            icd_codes_extracted=[]
+        )
 

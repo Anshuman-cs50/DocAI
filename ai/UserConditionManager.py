@@ -1,13 +1,12 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from db import crud
-import embedding
 from flask import jsonify
-from ai import embedding, LLM_module
+from . import embedding
 from typing import List
-from ai.LLM_module import ConditionAction
+from .LLM_module import ConditionAction, DataProcessingLLM
 
-data_processing_llm = LLM_module.DataProcessingLLM()
+data_processing_llm = DataProcessingLLM()
 embedder = embedding.MedicalEmbedder()
 
 # define the threshold for condition checking
@@ -19,30 +18,70 @@ def check_and_log_user_conditions(
     user_health_records_context: str
 ):
     """
-    Checks for new user conditions based on the last condition check time
+    Checks for new user conditions based on the last condition check time.
+    Returns a consistent dict format.
     """
-
+    
     # get the last condition check time
-    last_check_time = crud.get_last_condition_check_time(db, consultation_id)
+    try:
+        last_check_time = crud.get_last_condition_check_time(db, consultation_id)
+    except Exception as e:
+        return {
+            "success": False,
+            "message": "Error retrieving consultation check time.",
+            "details": None,
+            "errors": [str(e)]
+        }
+    
     if last_check_time is None:
-        return jsonify({"error": "Consultation not found."})
+        return {
+            "success": False,
+            "message": "Consultation not found.",
+            "details": None,
+            "errors": ["Consultation ID does not exist."]
+        }
     
     # check if enough timeline entries have been added since last check
-    new_entries = crud.get_timeline_entries_since(
-        db,
-        consultation_id,
-        since=last_check_time
-    )
-
+    try:
+        new_entries = crud.get_timeline_entries_since(
+            db,
+            consultation_id,
+            since=last_check_time
+        )
+    except Exception as e:
+        return {
+            "success": False,
+            "message": "Error retrieving timeline entries.",
+            "details": None,
+            "errors": [str(e)]
+        }
+    
     if len(new_entries) < CONDITION_CHECK_THRESHOLD:
-        return jsonify({"message": "No new conditions to log at this time.", "status_code": 1})
+        return {
+            "success": True,
+            "message": "No new conditions to log at this time.",
+            "details": None,
+            "errors": None
+        }
     
     # Prepare context for condition detection LLM using current summary and new timeline entries
-    current_consultation = crud.get_consultation_by_id(db, consultation_id)
-    summary_context = current_consultation.summary or "No summary available."
-    new_entries_context = [entry.model_response for entry in new_entries]
-
+    try:
+        current_consultation = crud.get_consultation_by_id(db, consultation_id)
+        if not current_consultation:
+            raise ValueError(f"Consultation {consultation_id} not found")
+        
+        summary_context = current_consultation.summary or "No summary available."
+        new_entries_context = [entry.model_response for entry in new_entries]
+    except Exception as e:
+        return {
+            "success": False,
+            "message": "Error preparing context for condition detection.",
+            "details": None,
+            "errors": [str(e)]
+        }
+    
     # --- LLM CALL ---
+    detected_conditions = None
     try:
         # Call the condition detection LLM - Ensure it returns List[ConditionAction]
         detected_conditions: List[ConditionAction] = data_processing_llm.detect_conditions(
@@ -50,22 +89,29 @@ def check_and_log_user_conditions(
             new_entries_context, 
             user_health_records_context
         )
+        
         # Filter out 'ignore' modes before processing
         actionable_conditions = [c for c in detected_conditions if c.mode != 'ignore']
-
+    
     except Exception as e:
-        return jsonify({"error": f"error during condition detection LLM call:\n {str(e)}"})
+        return {
+            "success": False,
+            "message": "Error during condition detection LLM call.",
+            "details": None,
+            "errors": [str(e)]
+        }
     
     # Log new conditions to the database
     log_messages = []
     log_errors = []
-
+    
     # Iterate over Pydantic objects, not dictionaries
-    for condition in actionable_conditions:
+    for idx, condition in enumerate(actionable_conditions):
         if condition.mode == 'add':
             try:
                 # Access attributes using dot notation (.condition_name, .condition_type)
                 embedding_vector = embedder.generate_embedding_for_condition(condition)
+                
                 crud.add_user_condition(
                     db,
                     condition_name=condition.condition_name,
@@ -74,18 +120,19 @@ def check_and_log_user_conditions(
                     consultation_id=consultation_id,
                     user_id=current_consultation.user_id,
                     diagnosis_date=func.now(),
-                    is_active=condition.is_active, # Access directly from Pydantic object
+                    is_active=condition.is_active,  # Access directly from Pydantic object
                     notes=condition.notes,
                     embedding_vector=embedding_vector
                 )
                 log_messages.append(f"Added: {condition.condition_name}")
             except Exception as e:
                 log_errors.append(f"Error adding {condition.condition_name}: {str(e)}")
-
+        
         elif condition.mode == 'update':
             try:
                 # Use condition.condition_id, which is Optional[int]
                 existing_condition = crud.get_condition_by_id(db, condition.condition_id)
+                
                 if existing_condition:
                     crud.update_user_condition(
                         db,
@@ -99,21 +146,27 @@ def check_and_log_user_conditions(
                     log_errors.append(f"Update failed: Condition ID {condition.condition_id} not found.")
             except Exception as e:
                 log_errors.append(f"Error updating condition ID {condition.condition_id}: {str(e)}")
-
-
+    
     # Update the last condition check time
     try:
-        crud.update_last_condition_check_time(
-            db,
-            consultation_id,
-            new_check_time=func.now()
-        )
+        crud.update_last_condition_check_time(db, consultation_id)
         log_messages.append("Condition check time updated.")
     except Exception as e:
         log_errors.append(f"Error updating last condition check time: {str(e)}")
-
-    # Combine messages and return the final response
+    
+    # Return consistent format
     if log_errors:
-        return jsonify({"message": "Processing complete with errors.", "details": log_messages, "errors": log_errors, "status_code": 5})
+        return {
+            "success": False,
+            "message": "Processing complete with errors.",
+            "details": log_messages if log_messages else None,
+            "errors": log_errors
+        }
     else:
-        return jsonify({"message": "Successfully processed all detected conditions.", "details": log_messages, "status_code": 3})
+        return {
+            "success": True,
+            "message": "Successfully processed all detected conditions.",
+            "details": log_messages,
+            "errors": None
+        }
+

@@ -1,7 +1,11 @@
 from typing import Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import Date, func, text, DateTime, union_all
-from db import models
+from sqlalchemy import Date, func, literal, select, text, DateTime, union_all, literal_column, bindparam, cast
+from pgvector.sqlalchemy import Vector
+from pgvector import Vector as PgVector
+import numpy as np
+from . import models
+from .models import VECTOR_DIMENSION
 
 SIMILARITY_THRESHOLD = 0.5
 MAX_FINAL_CONTEXT_CHUNKS = 4
@@ -82,6 +86,10 @@ def update_consultation_summary_and_embedding(
     
     if consultation:
         consultation.summary = new_summary
+        # Convert NumPy array to list for pgvector compatibility
+        if new_embedding_vector is not None:
+            if isinstance(new_embedding_vector, np.ndarray):
+                new_embedding_vector = new_embedding_vector.tolist()
         consultation.embedding_vector = new_embedding_vector
         # updated_at will automatically update due to onupdate=datetime.utcnow in the model
         db.commit()
@@ -106,6 +114,11 @@ def update_last_condition_check_time(db: Session, consultation_id: int):
 
 def add_timeline_entry(db: Session, consultation_id: int, user_query: str, model_response: str, insights: str = None, embedding_vector=None):
     # 🛠 MODIFIED: Changed argument name 'embedding' to 'embedding_vector'
+    # Convert NumPy array to list for pgvector compatibility
+    if embedding_vector is not None:
+        if isinstance(embedding_vector, np.ndarray):
+            embedding_vector = embedding_vector.tolist()
+    
     entry = models.ConsultationTimeline(
         consultation_id=consultation_id,
         user_query=user_query,
@@ -157,6 +170,11 @@ def add_user_condition(
     consultation_id: int = None,
 ):
     """Creates a new record for a user's permanent/chronic health condition."""
+    # Convert NumPy array to list for pgvector compatibility
+    if embedding_vector is not None:
+        if isinstance(embedding_vector, np.ndarray):
+            embedding_vector = embedding_vector.tolist()
+    
     condition = models.UserCondition(
         user_id=user_id,
         condition_name=condition_name,
@@ -288,101 +306,117 @@ def get_latest_vitals(db: Session, user_id: int):
 def semantic_search_records(
     db: Session, 
     user_id: int, 
-    query_embedding, 
+    query_embedding, # MUST be a 1D NumPy array/list
     current_consultation_id: int = None,
-    k_consultations: int = 20,              # Increased temporary limit to allow filtering later
-    k_conditions: int = 20,                 # Increased temporary limit to allow filtering later
-    SIMILARITY_THRESHOLD_VALUE: float = SIMILARITY_THRESHOLD, # Use the derived threshold
-    MAX_FINAL_CONTEXT_CHUNKS: int = MAX_FINAL_CONTEXT_CHUNKS       # The new N limit for the LLM
+    k_consultations: int = 20,
+    k_conditions: int = 20,
+    SIMILARITY_THRESHOLD_VALUE: float = SIMILARITY_THRESHOLD,
+    MAX_FINAL_CONTEXT_CHUNKS: int = MAX_FINAL_CONTEXT_CHUNKS
 ):
     """ 
     Performs semantic search across UserCondition notes and Consultation summaries 
     with a hybrid distance/similarity threshold and a final Top-N limit.
+    
+    Uses raw SQL to bypass SQLAlchemy's type processors which cause ndim errors.
     """
     
     # 1. CALCULATE THE DISTANCE THRESHOLD
-    # Since Postgres/pgvector uses cosine distance (0=similar, 1=dissimilar), 
-    # a SIMILARITY_THRESHOLD_VALUE of 0.50 converts to a DISTANCE_THRESHOLD of 0.50.
     DISTANCE_THRESHOLD = 1.0 - SIMILARITY_THRESHOLD_VALUE
     
-    # --- 1. Search User Permanent Conditions ---
-    # We select records that meet or exceed the distance threshold (i.e., distance <= 0.50)
-    # We include the similarity score for clarity (1 - distance)
-    condition_results_query = (
-        db.query(
-            models.UserCondition.notes.label("text_snippet"),
-            models.UserCondition.condition_name.label("title"),
-            models.UserCondition.diagnosis_date.label("date"),
-            text("'User Condition'").label("type"),
-            (models.UserCondition.embedding_vector.op('<=>')(query_embedding)).label("distance"),
-            (text("1.0 - (models.UserCondition.embedding_vector.op('<=>')(:query_embedding))")).label("similarity_score") # Calculate similarity
-        )
-        .filter(models.UserCondition.user_id == user_id)
-        # 🌟 APPLYING THE THRESHOLD FILTER HERE 🌟
-        .filter((models.UserCondition.embedding_vector.op('<=>')(query_embedding)) <= DISTANCE_THRESHOLD)
-        # Order by distance, but don't limit yet, we want all candidates above threshold
-        .order_by(text("distance"))
-    )
+    # 2. Convert embedding to list format that PostgreSQL can handle
+    if isinstance(query_embedding, list):
+        query_embedding = np.array(query_embedding, dtype=np.float32)
+    elif not isinstance(query_embedding, np.ndarray):
+        query_embedding = np.array(query_embedding, dtype=np.float32)
     
-    # Execute and subquery the conditions that passed the distance threshold
-    condition_results = condition_results_query.limit(k_conditions).subquery("conditions")
+    # Ensure it's 1D
+    if query_embedding.ndim != 1:
+        query_embedding = query_embedding.flatten()
     
-    # --- 2. Search Consultation Summaries ---
-    consultation_query = (
-        db.query(
-            models.Consultation.summary.label("text_snippet"),
-            models.Consultation.heading.label("title"),
-            models.Consultation.created_at.label("date"),
-            text("'Consultation Summary'").label("type"),
-            (models.Consultation.embedding_vector.op('<=>')(query_embedding)).label("distance"),
-            (text("1.0 - (models.Consultation.embedding_vector.op('<=>')(:query_embedding))")).label("similarity_score") # Calculate similarity
-        )
-        .filter(models.Consultation.user_id == user_id)
-    )
+    # Convert to list of floats - PostgreSQL will handle the Vector conversion via CAST
+    query_embedding_list = [float(x) for x in query_embedding.tolist()]
     
-    # Exclude the current consultation
+    # 3. Build raw SQL query to bypass SQLAlchemy's type processors
+    # We use PostgreSQL's native parameter binding with :param_name syntax
+    current_consultation_filter = ""
     if current_consultation_id is not None:
-        consultation_query = consultation_query.filter(
-            models.Consultation.id != current_consultation_id
+        current_consultation_filter = f"AND consultations.id != {current_consultation_id}"
+    
+    sql_query = text(f"""
+        WITH condition_results AS (
+            SELECT 
+                user_conditions.notes AS text_snippet,
+                user_conditions.condition_name AS title,
+                user_conditions.diagnosis_date AS date,
+                'User Condition' AS type,
+                user_conditions.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION})) AS distance,
+                1.0 - (user_conditions.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))) AS similarity_score
+            FROM user_conditions
+            WHERE user_conditions.user_id = :user_id
+                AND (user_conditions.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))) <= :distance_threshold
+            ORDER BY user_conditions.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))
+            LIMIT :k_conditions
+        ),
+        consultation_results AS (
+            SELECT 
+                consultations.summary AS text_snippet,
+                consultations.heading AS title,
+                consultations.created_at AS date,
+                'Consultation Summary' AS type,
+                consultations.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION})) AS distance,
+                1.0 - (consultations.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))) AS similarity_score
+            FROM consultations
+            WHERE consultations.user_id = :user_id
+                {current_consultation_filter}
+                AND (consultations.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))) <= :distance_threshold
+            ORDER BY consultations.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))
+            LIMIT :k_consultations
+        ),
+        combined_records AS (
+            SELECT * FROM condition_results
+            UNION ALL
+            SELECT * FROM consultation_results
         )
-
-    consultation_results_query = (
-        consultation_query
-        # 🌟 APPLYING THE THRESHOLD FILTER HERE 🌟
-        .filter((models.Consultation.embedding_vector.op('<=>')(query_embedding)) <= DISTANCE_THRESHOLD)
-        .order_by(text("distance"))
+        SELECT 
+            text_snippet,
+            title,
+            date,
+            type,
+            distance,
+            similarity_score
+        FROM combined_records
+        ORDER BY distance ASC
+        LIMIT :max_results
+    """)
+    
+    # 4. Execute with proper parameter binding
+    # Pass the list - PostgreSQL's CAST will convert it to Vector type
+    # We format it as a string representation that PostgreSQL understands: '[1.0, 2.0, ...]'
+    query_vec_str = '[' + ','.join(str(x) for x in query_embedding_list) + ']'
+    
+    result = db.execute(
+        sql_query,
+        {
+            'query_vec': query_vec_str,
+            'user_id': user_id,
+            'distance_threshold': DISTANCE_THRESHOLD,
+            'k_conditions': k_conditions,
+            'k_consultations': k_consultations,
+            'max_results': MAX_FINAL_CONTEXT_CHUNKS
+        }
     )
-
-    # Execute and subquery the consultations that passed the distance threshold
-    consultation_results = consultation_results_query.limit(k_consultations).subquery("consultations")
     
-    # --- 3. Combine, Final Sort, and Apply Top-N Limit ---
+    # 5. Convert results to list of dictionaries
+    final_results = result.all()
     
-    # Union all results that passed the initial threshold filter
-    combined_query = union_all(
-        db.query(condition_results).subquery().select(),
-        db.query(consultation_results).subquery().select()
-    ).alias("combined_records")
-
-    # Retrieve and sort ALL results by distance (ASC)
-    final_query = (
-        db.query(combined_query)
-        .order_by(combined_query.c.distance.asc())
-        # 🌟 APPLYING THE FINAL TOP-N LIMIT HERE 🌟
-        .limit(MAX_FINAL_CONTEXT_CHUNKS)
-    )
-    
-    final_results = final_query.all()
-    
-    # Convert results to a list of dictionaries for easier AI consumption
     return [
         {
             "type": r.type,
             "title": r.title,
             "snippet": r.text_snippet,
-            "date": r.date.isoformat() if r.date else None, 
-            "relevance_distance": r.distance,
-            "relevance_similarity": r.similarity_score # Include the score for debugging/LLM context
+            "date": r.date.isoformat() if r.date else None,
+            "relevance_distance": float(r.distance),
+            "relevance_similarity": float(r.similarity_score)
         }
         for r in final_results
     ]

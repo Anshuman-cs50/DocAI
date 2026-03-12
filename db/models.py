@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 from db.database import Base
 from pgvector.sqlalchemy import Vector
 
+VECTOR_DIMENSION = 768
 
 class User(Base):
     __tablename__ = "users"
@@ -16,8 +17,7 @@ class User(Base):
     consultations = relationship("Consultation", back_populates="user", cascade="all, delete-orphan")
 
     conditions = relationship("UserCondition", back_populates="user", cascade="all, delete-orphan")
-    vitals = relationship("VitalsTimeSeries", back_populates="user", cascade="all, delete-orphan")
-
+    vitals_entries = relationship("VitalsTimeSeries", back_populates="user", cascade="all, delete-orphan")
 
 class Consultation(Base):
     __tablename__ = "consultations"
@@ -27,7 +27,7 @@ class Consultation(Base):
     heading = Column(String(255), default="") 
     reference = Column(Integer, ForeignKey("consultations.id"), nullable=True)
     summary = Column(Text, default="")
-    embedding_vector = Column(Vector(1536), nullable=True)
+    embedding_vector = Column(Vector(VECTOR_DIMENSION), nullable=True)
     created_at = Column(DateTime, default=func.now())  
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -50,7 +50,7 @@ class ConsultationTimeline(Base):
     user_query = Column(Text) 
     model_response = Column(Text)
     insights = Column(Text, nullable=True)
-    embedding_vector = Column(Vector(1536))
+    embedding_vector = Column(Vector(VECTOR_DIMENSION))
     created_at = Column(DateTime, default=func.now()) # Use func.now() for consistency
 
     consultation = relationship("Consultation", back_populates="timeline_entries")
@@ -78,7 +78,7 @@ class UserCondition(Base):
     
     # Contextual and Search Data
     notes = Column(Text, default="")
-    embedding_vector = Column(Vector(1536), nullable=True) 
+    embedding_vector = Column(Vector(VECTOR_DIMENSION), nullable=True) 
 
     # Audit Timestamps
     created_at = Column(DateTime, default=func.now())
