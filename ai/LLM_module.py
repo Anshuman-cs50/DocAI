@@ -36,7 +36,7 @@ class ConditionAction(BaseModel):
     mode: Literal["add", "update", "ignore"] = Field(
         description="The action to be taken: 'add' for new conditions/symptoms; 'update' for changes to existing ones (e.g., status change); 'ignore' if the finding is trivial or already confirmed."
     )
-    
+
     # Fields required for ADDING a new condition
     condition_name: str = Field(
         description="The formal medical name or symptom name (required for 'add' mode). Example: 'Lisinopril-induced cough'."
@@ -44,10 +44,18 @@ class ConditionAction(BaseModel):
     condition_type: Literal["condition", "symptom", "adr"] = Field(
         description="The clinical classification (required for 'add' mode): 'condition' (chronic/acute), 'symptom' (transient), or 'adr' (Adverse Drug Reaction)."
     )
-    
+
     # Fields required for UPDATING an existing condition
     condition_id: Optional[int] = Field(
         None, description="The internal database ID of the existing condition to update (required for 'update' mode)."
+    )
+
+    # Shared optional fields (populated by LLM for richer context)
+    is_active: bool = Field(
+        True, description="Whether the condition is currently active. Defaults to True for new conditions."
+    )
+    notes: str = Field(
+        "", description="Freeform clinical notes about the condition, such as severity or context."
     )
 
 
@@ -176,49 +184,43 @@ class ConsultationLLM:
     def generate_consultation_response(
         self,
         query: str,
-        context_list: List[Dict[str, Any]],
+        health_records_context: str,
         current_consultation_context: str,
-        timeline_context: str
+        timeline_context: str,
     ) -> str:
         """
         Constructs the RAG prompt and calls the remote Gradio API.
+
+        Args:
+            query: The raw user query text.
+            health_records_context: Pre-formatted string from ai.format_health_records_context().
+                                   Injected directly into the RAG prompt.
+            current_consultation_context: Pre-formatted string describing the current session.
+            timeline_context: Pre-formatted string of recent conversation turns.
+
+        Returns:
+            The model's response string, or an error message string.
         """
         if not self.client:
-            return "Error: Gradio client not initialized. Check the COLAB_GRADIO_URL."
+            return "Error: Gradio client not initialized. Ensure GRADIO_API_URL is set and /update_gradio_url has been called."
 
-        # Format the historical records context
-        if not context_list:
-            user_health_records_context = 'No highly relevant historical records found (Similarity < 0.50).'
-        else:
-            user_health_records_context = "\n".join([
-                f"SOURCE_TYPE: {c['type']} | TITLE: {c['title']}\n"
-                f"RELEVANCE: {c['relevance_similarity']:.4f}\n"
-                f"SNIPPET: {c['snippet']}"
-                for c in context_list
-            ])
-            
-        # 1. Substitute all fields into the template to create the full text_prompt
+        # Use a fallback if context is empty
+        resolved_health_context = health_records_context or "No highly relevant historical records found (Similarity < 0.50)."
+
+        # Build the full prompt from the template
         final_prompt = RAG_SYSTEM_PROMPT_TEMPLATE.format(
             current_consultation_context=current_consultation_context,
-            timeline_context=timeline_context or 'No prior history in this session.',
-            user_health_records_context=user_health_records_context or 'No related record.',
-            user_query=query
+            timeline_context=timeline_context or "No prior history in this session.",
+            user_health_records_context=resolved_health_context,
+            user_query=query,
         )
-        
-        # 2. Call the remote Gradio API using the client.predict method
+
         try:
-            # The client.predict call must match the inputs of your Colab Gradio interface.
-            # Assuming your Colab interface accepts a single string prompt (text_prompt) 
-            # and uses the default '/predict' API endpoint.
             generated_text = self.client.predict(
                 final_prompt,
-                api_name="/predict"
+                api_name="/predict",
             )
-            
-            # Note: You may need to adjust how the output is extracted based on 
-            # how your Gradio function returns the text (e.g., if it's nested).
-            return generated_text 
-
+            return generated_text
         except Exception as e:
             return f"Error connecting to Gradio API at {self.gradio_url}: {e}"
         
@@ -308,22 +310,29 @@ class DataProcessingLLM:
         items = data if isinstance(data, list) else [data]
         return [ConditionAction(**item) for item in items]
 
-    def summarise(self, existing_summary: str, new_timeline_entries: List[Dict[str, str]]) -> str:
-        timeline_context = ""
-        for entry in new_timeline_entries:
-            timeline_context += f"User: {entry.get('user_query', 'N/A')}\nAssistant: {entry.get('model_response', 'N/A')}\n"
-        
-        if not timeline_context: return existing_summary
+    def summarise(self, existing_summary: str, formatted_timeline: str) -> str:
+        """
+        Generates an updated cumulative clinical summary.
+
+        Args:
+            existing_summary: The current summary stored in the database.
+            formatted_timeline: A pre-formatted string of recent conversation turns,
+                               produced by MemoryManager.format_timeline_for_summarization().
+
+        Returns:
+            Updated summary string, or the original if no new content.
+        """
+        if not formatted_timeline:
+            return existing_summary
 
         prompt = SUMMARIZATION_PROMPT_TEMPLATE.format(
             existing_summary=existing_summary or "None.",
-            conversation_timeline=timeline_context
+            conversation_timeline=formatted_timeline,
         )
 
         raw_text = self._call_hf_api(prompt)
-        # We DON'T clean JSON here because summary is just a string
-        # BUT we strip common LLM artifacts
-        clean_summary = raw_text.strip().split("---")[-1].strip() 
+        # Strip common LLM artifacts (headings, trailing separators)
+        clean_summary = raw_text.strip().split("---")[-1].strip()
         return clean_summary if clean_summary else existing_summary
 
 if __name__ == "__main__":

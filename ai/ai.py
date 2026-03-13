@@ -104,10 +104,12 @@ def generate_consultation_response(
         )
 
     # 5. Generate the consultation response using the LLM
-    model_response = consultation_llm.generate_consultation_response(query=user_query,
-                                                                    context_list=user_health_records_context,
-                                                                    current_consultation_context=current_consultation_context,
-                                                                    timeline_context=timeline_context)
+    model_response = consultation_llm.generate_consultation_response(
+        query=user_query,
+        health_records_context=user_health_records_context,
+        current_consultation_context=current_consultation_context,
+        timeline_context=timeline_context,
+    )
 
     # 6. Return response and context
     return {

@@ -84,9 +84,9 @@ def check_and_log_user_conditions(
     detected_conditions = None
     try:
         # Call the condition detection LLM - Ensure it returns List[ConditionAction]
-        detected_conditions: List[ConditionAction] = data_processing_llm.detect_conditions(
-            summary_context, 
-            new_entries_context, 
+        detected_conditions: List[ConditionAction] = data_processing_llm.detect_condition(
+            summary_context,
+            new_entries_context,
             user_health_records_context
         )
         

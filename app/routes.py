@@ -3,10 +3,8 @@ import os
 from flask import Blueprint, jsonify, request, render_template
 from db.database import SessionLocal
 from db import crud
-from ai import ai, embedding, MemoryManager as mm, UserConditionManager as ucm, LLM_module
+from ai import ai, MemoryManager as mm, UserConditionManager as ucm
 
-
-embedder = embedding.MedicalEmbedder()
 main = Blueprint("main", __name__)
 
 
@@ -211,7 +209,7 @@ def consult():
                 insights_text = insights_text.compressed_summary
                 
                 # 2. Generate the final embedding vector from the CONCISE INSIGHTS text
-                insight_embedding_vector = embedder.generate_embedding(insights_text)
+                insight_embedding_vector = ai.embedder.generate_embedding(insights_text)
                 
                 # 3. Store the new timeline entry
                 try:
@@ -259,10 +257,9 @@ def consult():
             
             # 5. Check for the 10-turn threshold and summarize if needed
             mm_response = mm.manage_consultation_memory(db=db, consultation_id=consultation_id)
-            if mm_response:
-                if "error" in mm_response:
-                    return mm_response
-                elif "message" in mm_response:
-                    print(mm_response["message"])
+            if mm_response and not mm_response.get("success", True):
+                print(f"[WARNING] Memory manager error: {mm_response.get('message')}")
+            elif mm_response:
+                print(mm_response.get("message", ""))
         
         db.close()

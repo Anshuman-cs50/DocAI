@@ -46,7 +46,7 @@ def manage_consultation_memory(
         print(f"[DEBUG] Retrieved {len(unsummarized_entries)} unsummarized entries (threshold: {SUMMARY_UPDATE_THRESHOLD})")
     except Exception as e:
         print(f"[ERROR] Failed to retrieve unsummarized entries: {str(e)}")
-        return {"error": f"error retrieving unsummarized entries:\n {str(e)}"}
+        return {"success": False, "message": f"Error retrieving unsummarized entries: {str(e)}"}
 
     # 2. Check the trigger condition
     if len(unsummarized_entries) >= SUMMARY_UPDATE_THRESHOLD:
@@ -58,7 +58,7 @@ def manage_consultation_memory(
             print(f"[DEBUG] Formatted context for summarization. Length: {len(context_to_summarize)}")
         except Exception as e:
             print(f"[ERROR] Failed to format context: {str(e)}")
-            return {"error": f"error formatting context:\n {str(e)}"}
+            return {"success": False, "message": f"Error formatting context: {str(e)}"}
         
         # Get the existing summary (to pass to the summarizer for cumulative context)
         try:
@@ -69,7 +69,7 @@ def manage_consultation_memory(
             print(f"[DEBUG] Retrieved existing summary. Length: {len(existing_summary)}")
         except Exception as e:
             print(f"[ERROR] Failed to retrieve consultation: {str(e)}")
-            return {"error": f"error retrieving consultation:\n {str(e)}"}
+            return {"success": False, "message": f"Error retrieving consultation: {str(e)}"}
         
         # 4. Call the Summarization LLM
         print(f"[DEBUG] Calling summarize LLM...")
@@ -80,7 +80,7 @@ def manage_consultation_memory(
             print(f"[ERROR] LLM summarization failed: {str(e)}")
             import traceback
             traceback.print_exc()
-            return {"error": f"error during LLM summarization:\n {str(e)}"}
+            return {"success": False, "message": f"Error during LLM summarization: {str(e)}"}
 
         # 5. Generate the embedding for the NEW summary
         print(f"[DEBUG] Generating embedding for new summary...")
@@ -89,7 +89,7 @@ def manage_consultation_memory(
             print(f"[DEBUG] Embedding generated. Shape: {new_embedding_vector.shape if hasattr(new_embedding_vector, 'shape') else 'unknown'}")
         except Exception as e:
             print(f"[ERROR] Failed to generate embedding: {str(e)}")
-            return {"error": f"error generating embedding:\n {str(e)}"}
+            return {"success": False, "message": f"Error generating embedding: {str(e)}"}
 
         # 6. Update the Consultation record
         print(f"[DEBUG] Updating consultation summary and embedding...")
@@ -105,11 +105,11 @@ def manage_consultation_memory(
             print(f"[ERROR] Failed to update consultation: {str(e)}")
             import traceback
             traceback.print_exc()
-            return {"error": f"error updating consultation summary and embedding:\n {str(e)}"}
+            return {"success": False, "message": f"Error updating consultation summary: {str(e)}"}
         
         print(f"[DEBUG] Summary update completed successfully")
-        return {"message": f"Successfully updated summary for consultation {consultation_id}"}
+        return {"success": True, "message": f"Summary updated for consultation {consultation_id}."}
     else:
         print(f"[DEBUG] Only {len(unsummarized_entries)} unsummarized entries. Threshold ({SUMMARY_UPDATE_THRESHOLD}) not reached. Skipping summary update.")
-    
-    return False
+
+    return {"success": True, "message": "Summary update not yet due. Threshold not reached."}
