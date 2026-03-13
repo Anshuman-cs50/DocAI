@@ -184,7 +184,7 @@ def consult():
             user_query=user_query,
         )
         
-        print(f"Consultation response generated successfully.\n{result}")
+        print(f"[OK] Consultation response generated successfully.")
         return jsonify({"response": result["model_response"]})
     
     except Exception as e:

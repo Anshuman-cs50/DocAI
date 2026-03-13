@@ -4,6 +4,8 @@ from flask import json
 from gradio_client import Client
 import requests
 import re
+import contextlib
+import io
 
 # Assuming RAG_SYSTEM_PROMPT_TEMPLATE and other necessary imports are available
 
@@ -149,6 +151,8 @@ You are a highly efficient **Clinical Summarization Engine**. Your task is to up
 --- NEW CUMULATIVE SUMMARY ---
 """
 
+
+
 class ConsultationLLM:
     """Handles RAG-based consultation responses using MedGemma via Gradio API."""
     
@@ -157,8 +161,11 @@ class ConsultationLLM:
         self.gradio_url = gradio_url
         print(f"Initializing remote LLM client for {self.model_name} at: {self.gradio_url}")
         try:
-            # Initialize the Gradio Client
-            self.client = Client(self.gradio_url)
+            import logging
+            logging.getLogger("httpx").setLevel(logging.WARNING)
+            # Initialize the Gradio Client quietly by swallowing stdout
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.client = Client(self.gradio_url)
         except Exception as e:
             print(f"Warning: Could not initialize Gradio Client. Ensure current URL ({self.gradio_url}) is correct. Error: {e}")
             self.client = None
@@ -172,7 +179,8 @@ class ConsultationLLM:
         """
         print(f"[INFO] Updating Gradio URL: {self.gradio_url} → {new_url}")
         try:
-            new_client = Client(new_url)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                new_client = Client(new_url)
             self.client = new_client
             self.gradio_url = new_url
             print(f"[OK] Gradio client successfully re-initialized at: {new_url}")
@@ -226,13 +234,14 @@ class ConsultationLLM:
         
 
 class DataProcessingLLM:
-    def __init__(self, model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct"):
+    def __init__(self, model_name: str = "Qwen/Qwen2.5-7B-Instruct"):
         self.model_name = model_name
-        self.api_url = f"https://api-inference.huggingface.co/models/{self.model_name}"
+        self.api_url = "https://router.huggingface.co/v1/chat/completions"
         
-        # Verify tokens (assuming these are defined in your env/globals)
-        if 'HF_API_TOKEN' not in globals() or not HF_API_TOKEN:
-            print("[WARNING] HF_API_TOKEN is not set. API calls will fail.")
+        # HF_API_TOKEN is only strictly needed if not using huggingface-cli login
+        # We suppress the explicit print to avoid terminal noise.
+        # if 'HF_API_TOKEN' not in globals() or not HF_API_TOKEN:
+        #    print("[WARNING] HF_API_TOKEN not set explicitly in globals.")
 
     def _clean_and_parse_json(self, raw_text: str):
         """Extracts JSON from text that might contain markdown or chatter."""
@@ -253,12 +262,10 @@ class DataProcessingLLM:
         }
         
         payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 1024,
-                "temperature": 0.1, # Keep low for extraction accuracy
-                "return_full_text": False
-            }
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1024,
+            "temperature": 0.1
         }
         
         try:
@@ -266,8 +273,8 @@ class DataProcessingLLM:
             response.raise_for_status()
             result = response.json()
             
-            # HF Router returns a list of dicts
-            raw_output = result[0].get('generated_text', '') if isinstance(result, list) else result.get('generated_text', '')
+            # Parse OpenAI-compatible chat completion response
+            raw_output = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             return raw_output.strip()
             
         except Exception as e:
@@ -284,8 +291,16 @@ class DataProcessingLLM:
         raw_text = self._call_hf_api(prompt, schema_json=ExtractionInsights.model_json_schema())
         data = self._clean_and_parse_json(raw_text)
         
-        if not data:
-            return ExtractionInsights(insight_found=False)
+        # Guard against API failures returning {"error": "..."} dicts
+        if not data or "error" in data:
+            if "error" in (data or {}):
+                print(f"[WARNING] API Error during extraction: {data['error']}")
+            return ExtractionInsights(
+                insight_found=False,
+                compressed_summary="",
+                primary_condition_or_symptom="",
+                icd_codes_extracted=[]
+            )
             
         return ExtractionInsights(**data)
 
@@ -304,7 +319,11 @@ class DataProcessingLLM:
         raw_text = self._call_hf_api(prompt, schema_json=ConditionAction.model_json_schema())
         data = self._clean_and_parse_json(raw_text)
 
-        if not data: return []
+        # Guard against API failures returning {"error": "..."} dicts
+        if not data or (isinstance(data, dict) and "error" in data):
+            if isinstance(data, dict) and "error" in data:
+                print(f"[WARNING] API Error during detection: {data['error']}")
+            return []
         
         # Ensure result is a list even if LLM returned a single object
         items = data if isinstance(data, list) else [data]

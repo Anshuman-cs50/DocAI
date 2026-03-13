@@ -5,7 +5,13 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 import warnings
+import logging
+
+# Suppress ALL TensorFlow & Keras deprecation warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='tensorflow')
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", module='tf_keras')
+logging.getLogger("tensorflow").setLevel(logging.ERROR)
 
 from flask import Flask
 from flask_cors import CORS
