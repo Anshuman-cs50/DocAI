@@ -47,30 +47,51 @@ print("[OK] MedGemma model loaded.")
 # %% ── STEP 4: Define inference function ────────────────────────────────────
 # Cell 4
 import traceback
+import json
 
-def medgemma_infer(text_prompt: str):
+def medgemma_infer(input_payload: str):
     """
-    Text-only handler for MedGemma.
-    Accepts a plain text prompt, returns a safe and readable response.
-    Handles empty input and runtime errors gracefully.
+    Text/Message handler for MedGemma.
+    Accepts either a plain text prompt OR a JSON string of message history.
     """
     try:
-        if not text_prompt or text_prompt.strip() == "":
+        if not input_payload or input_payload.strip() == "":
             return "[ERROR] Please enter a valid text prompt."
 
-        messages = [
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": text_prompt}]
-            }
-        ]
+        # Detect if input is a JSON array of messages (from the backend agent)
+        if input_payload.strip().startswith("["):
+            try:
+                raw_messages = json.loads(input_payload)
+                # Remap standard {"role": "user", "content": "..."} to MedGemma vision-text schema
+                messages = [
+                    {
+                        "role": msg["role"],
+                        "content": [{"type": "text", "text": msg["content"]}]
+                    }
+                    for msg in raw_messages
+                ]
+            except json.JSONDecodeError:
+                return "[ERROR] Invalid JSON payload."
+        else:
+            # Fallback for manual user testing directly in the Gradio UI text box
+            messages = [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": input_payload}]
+                }
+            ]
 
         output_text = pipe(
             text=messages,
             max_new_tokens=1024,
             do_sample=False
         )
-        return output_text[0]["generated_text"][1]["content"]
+        
+        # Return only the very last generated message's text block
+        last_turn = output_text[0]["generated_text"][-1]["content"]
+        if isinstance(last_turn, list):
+            return last_turn[0]["text"]
+        return last_turn
 
     except torch.cuda.OutOfMemoryError:
         return "[ERROR] GPU memory exhausted. Restart the runtime or use a shorter prompt."

@@ -193,73 +193,19 @@ def consult():
     finally:
         # --- PERSISTENCE BLOCK ---
         if user_query and result:
-            # 1. Generate the high-density insight text for storage
-            insights_text = ai.extract_insights(
-                user_query=user_query,
-                model_response=result["model_response"]
-            )
-            
-            # Handle potential error dict from extract_insights (e.g., API failure)
-            if isinstance(insights_text, dict) and "error" in insights_text:
-                # Return the API error to the client
-                return jsonify({"error": insights_text["error"]}), 500
-            
-            # Now insights_text is guaranteed to be an ExtractionInsights object
-            if insights_text.insight_found:
-                insights_text = insights_text.compressed_summary
-                
-                # 2. Generate the final embedding vector from the CONCISE INSIGHTS text
-                insight_embedding_vector = ai.embedder.generate_embedding(insights_text)
-                
-                # 3. Store the new timeline entry
-                try:
-                    crud.add_timeline_entry(
-                        db=db,
-                        consultation_id=consultation_id,
-                        user_query=user_query,
-                        model_response=result["model_response"],
-                        insights=insights_text,
-                        embedding_vector=insight_embedding_vector
-                    )
-                except Exception as e:
-                    return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"})
-            else:
-                # If insight_found is False, only store the raw chat for history, not the embedding.
-                try:
-                    crud.add_timeline_entry(
-                        db=db,
-                        consultation_id=consultation_id,
-                        user_query=user_query,
-                        model_response=result["model_response"],
-                        insights="Trivial chat turn - no clinical insight captured.",
-                        embedding_vector=None
-                    )
-                    print("Stored trivial chat turn without generating an embedding vector.")
-                except Exception as e:
-                    return jsonify({"error": f"error adding trivial timeline entry to the database:\n {str(e)}"})
-            
-            # 4. Check for any new conditions to log for the user
-            ucm_response = ucm.check_and_log_user_conditions(
-                db=db,
-                consultation_id=consultation_id,
-                user_health_records_context=result["user_health_records_context"]
-            )
-            
-            # Handle the consistent dict response
-            if not ucm_response["success"]:
-                # Return error to client if condition processing failed
-                return jsonify({"error": ucm_response["message"], "details": ucm_response.get("errors")}), 500
-            else:
-                # Log success message (optional: could also return in response if needed)
-                print(ucm_response["message"])
-                if ucm_response["details"]:
-                    print("Details:", ucm_response["details"])
-            
-            # 5. Check for the 10-turn threshold and summarize if needed
-            mm_response = mm.manage_consultation_memory(db=db, consultation_id=consultation_id)
-            if mm_response and not mm_response.get("success", True):
-                print(f"[WARNING] Memory manager error: {mm_response.get('message')}")
-            elif mm_response:
-                print(mm_response.get("message", ""))
+            # Simply store the raw chat for history. 
+            # Insight extraction & embedding generation are deferred to the end of the session.
+            try:
+                crud.add_timeline_entry(
+                    db=db,
+                    consultation_id=consultation_id,
+                    user_query=user_query,
+                    model_response=result["model_response"],
+                    insights="Pending End-of-Session Extraction",
+                    embedding_vector=None
+                )
+                print(f"[OK] Timeline entry stored.")
+            except Exception as e:
+                return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"}), 500
         
         db.close()

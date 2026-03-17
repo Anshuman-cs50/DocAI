@@ -51,70 +51,100 @@ def generate_consultation_response(
     user_query: str, 
 ):     
     """
-    Generates a consultation response using LLM, informed by historical and session context.
+    Orchestrates the ReAct dual-pass agentic loop for a consultation response.
     """
-    
-    # 1. Generate embedding for user query
-    query_embedding = embedder.generate_embedding(user_query)
-    # print(f"Raw embedding type: {type(query_embedding)}, shape: {np.array(query_embedding).shape}")  # Debug
-
-
-    if not isinstance(query_embedding, np.ndarray):
-        query_embedding = np.array(query_embedding)
-    # print(f"After np.array: shape {query_embedding.shape}")  # Debug
-
-
-    query_embedding = query_embedding.flatten()
-    # print(f"After flatten: shape {query_embedding.shape}")  # Debug
-
-    # Convert numpy array to pure Python list for pgvector compatibility
-    # Ensure all elements are Python floats (not numpy float32/float64)
-    query_embedding = [float(x) for x in query_embedding.tolist()]
-    # print(f"Final list length: {len(query_embedding)}")  # Debug
-
-    # 2. Get relevant user health records (Consultation Summaries and Permanent Conditions)
-    user_health_records = crud.semantic_search_records(
-        db, 
-        user_id=user_id, 
-        query_embedding=query_embedding,
-        current_consultation_id=consultation_id,
-        k_consultations=3, # Increased to 3 for more context if needed
-    )
-
-    # 3. Get consultation timeline history for session context
-    consultation_timeline_entries = crud.get_recent_timeline_entries(
-        db,
-        consultation_id=consultation_id,
-        limit=5
-    )
-    
     # Get metadata about the *current* consultation session
     current_consultation = crud.get_consultation_by_id(db, consultation_id)
-    
-    # 4. Build context strings
-    timeline_context = format_timeline_context(consultation_timeline_entries)
-    user_health_records_context = format_health_records_context(user_health_records)
     
     current_consultation_context = ""
     if current_consultation:
         current_consultation_context = (
             f"Current Session Heading: {current_consultation.heading}\n"
-            f"Current Session Start Date: {current_consultation.created_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"Current Session Summary: {current_consultation.summary or 'No current summary available.'}"
+            f"Current Session Start Date: {current_consultation.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
-    # 5. Generate the consultation response using the LLM
-    model_response = consultation_llm.generate_consultation_response(
-        query=user_query,
-        health_records_context=user_health_records_context,
-        current_consultation_context=current_consultation_context,
-        timeline_context=timeline_context,
+    # 1. Get consultation timeline history for session context (longer native history)
+    consultation_timeline_entries = crud.get_recent_timeline_entries(
+        db,
+        consultation_id=consultation_id,
+        limit=20
     )
+    
+    from .MemoryManager import format_timeline_as_messages
+    from .LLM_module import AGENTIC_SYSTEM_PROMPT
+    
+    messages = format_timeline_as_messages(consultation_timeline_entries)
+    
+    system_prompt = AGENTIC_SYSTEM_PROMPT.format(current_consultation_context=current_consultation_context)
+    
+    if len(messages) == 0:
+        messages.append({"role": "user", "content": system_prompt + "\n\nUser Query:\n" + user_query})
+    else:
+        # Prepend to the very first history message to anchor the persona
+        messages[0]["content"] = system_prompt + "\n\n" + messages[0]["content"]
+        messages.append({"role": "user", "content": user_query})
 
+    # Pass 1: Decision Mode
+    print(f"[STEP] Agent Pass 1 (Decision Mode)...")
+    model_response = consultation_llm.agentic_chat(messages)
+    
+    user_health_records_context = ""
+    
+    if "[SEARCH]" in model_response:
+        search_query = model_response.split("[SEARCH]")[-1].strip()
+        print(f"[STEP] Agent requested SEARCH for: '{search_query}'")
+        
+        # 2. Generate embedding for the search query
+        query_embedding = embedder.generate_embedding(search_query)
+        if not isinstance(query_embedding, np.ndarray):
+            query_embedding = np.array(query_embedding)
+        query_embedding = query_embedding.flatten().tolist()
+        
+        # 3. Get relevant user health records
+        user_health_records = crud.semantic_search_records(
+            db, 
+            user_id=user_id, 
+            query_embedding=query_embedding,
+            current_consultation_id=consultation_id,
+            k_consultations=4,
+        )
+        user_health_records_context = format_health_records_context(user_health_records)
+        if not user_health_records_context:
+            user_health_records_context = "No results found for that search query."
+            
+        # 4. Append the context to the messages as a "System" observation
+        observation = f"System Search Results:\n{user_health_records_context}\nPlease [ANSWER] now."
+        messages.append({"role": "model", "content": model_response})
+        messages.append({"role": "user", "content": observation})
+        
+        # Pass 2: Answering Mode
+        print(f"[STEP] Agent Pass 2 (Answering Mode)...")
+        final_answer = consultation_llm.agentic_chat(messages)
+        
+        if "[ANSWER]" in final_answer:
+            final_answer = final_answer.split("[ANSWER]")[-1].strip()
+            
+        model_response = final_answer
+
+    elif "[ASK]" in model_response:
+        # The model wants live input from the patient — a lifestyle/symptom question
+        # that the DB cannot answer. Surface it directly to the patient as a response.
+        # No DB call, no second pass. The patient's reply will arrive in the next turn,
+        # at which point the model can act on it.
+        asked_question = model_response.split("[ASK]")[-1].strip()
+        print(f"[STEP] Agent asking patient: '{asked_question}'")
+        model_response = asked_question
+        
+    else:
+        # It chose to answer directly (or hallucinated)
+        if "[ANSWER]" in model_response:
+            model_response = model_response.split("[ANSWER]")[-1].strip()
+        print(f"[STEP] Agent chose to answer directly.")
+        
     # 6. Return response and context
     return {
         "model_response": model_response,
-        "timeline_context": timeline_context,
+        "timeline_context": "Native Message History Array Used",
         "user_health_records_context": user_health_records_context
     }
 

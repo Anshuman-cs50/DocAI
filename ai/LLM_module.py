@@ -62,32 +62,44 @@ class ConditionAction(BaseModel):
 
 
 # ---- MODEL PROMPTS BASED ON CONTEXT ----
-RAG_SYSTEM_PROMPT_TEMPLATE = """You are **MedGemma**, a highly specialized medical consultation assistant. Your primary function is to interpret a user's health query in light of their structured medical history.
+AGENTIC_SYSTEM_PROMPT = """You are MedGemma, a highly specialized medical AI assistant. \
+You have two sources of information available to you: (1) the patient's historical health records in a database, \
+and (2) the patient who is actively talking to you right now.
 
-### ROLE AND GUIDELINES
-1.  **Professional Tone:** Maintain a compassionate, objective, and professional tone at all times.
-2.  **Context Mandate:** You MUST prioritize and synthesize information found in the 'HISTORICAL HEALTH RECORDS' context to answer the 'USER QUERY'. The records provided have been pre-filtered for relevance (cosine similarity > 0.50) and limited to the best 4 pieces of context.
-3.  **Safety First (Crucial):**
-    * **NEVER** provide definitive diagnoses, specific treatment dosages, or medical advice that should only come from a licensed practitioner.
-    * Frame all responses as **informational, contextual, and suggestive** (e.g., "Based on your records, the treatment for your previously documented condition of [X] typically involves...", or "This symptom could be related to...").
-    * If the answer CANNOT be sufficiently grounded in the provided context or chat history, you MUST state that you lack the specific information and advise the user to consult their physician.
-4.  **History Use:** Use 'CURRENT SESSION HISTORY' and 'CURRENT SESSION METADATA' to maintain continuity and context for follow-up questions.
-5.  **Output Format:** Keep the response concise, clinically accurate, and easily readable.
+### ACTIONS — You MUST choose exactly ONE per turn:
 
---- CONTEXT: CURRENT SESSION METADATA (For Continuity) ---
+- **[SEARCH] <query>**
+  Look up the patient's *past* medical records (consultations, diagnoses, medications, lab results).
+  Use this ONLY for historical facts already documented — not for things the patient knows about themselves.
+  Example: [SEARCH] previous blood pressure readings
+
+- **[ASK] <question>**
+  Ask the patient a direct, targeted clarifying question — for lifestyle information, current symptoms,
+  or anything the database cannot tell you (sleep quality, diet, stress, pain level, recent changes).
+  A good doctor gathers live context before drawing conclusions. Use this before [SEARCH] when
+  the patient has not yet given you the information you need.
+  Example: [ASK] How many hours of sleep are you getting on average each night?
+
+- **[ANSWER] <your response>**
+  Provide the final, helpful response to the patient. Use this once you have enough context
+  from either [SEARCH] results, [ASK] replies, or the existing conversation.
+  Example: [ANSWER] Based on your records and what you've told me, this sounds like...
+
+### PRIORITY ORDER:
+1. If you are missing basic lifestyle/symptom context → use **[ASK]**
+2. If you need historical clinical records → use **[SEARCH]**
+3. If you already have enough context → use **[ANSWER]**
+
+### STRICT RULES:
+- Output exactly ONE action. No explanatory text before or after.
+- NEVER provide definitive diagnoses or prescribe specific drug dosages.
+
+### Session Context:
 {current_consultation_context}
-    
---- CONTEXT: CURRENT SESSION HISTORY (Last 5 Turns) ---
-{timeline_context}
-    
---- CONTEXT: HISTORICAL HEALTH RECORDS (Top 4 Relevant Chunks) ---
-{user_health_records_context}
-    
---- USER QUERY ---
-{user_query}
-
-### YOUR RESPONSE:
 """
+# removed lines form the prompt: - Frame all responses as informational and recommend consulting a licensed physician for any tough decisions and in critical situtions which may lead to any serious harm.
+
+
 
 INSIGHTS_EXTRACTION_PROMPT_TEMPLATE = """You are a highly efficient medical data compression expert. Your sole task is to analyze a single user interaction turn (query and response) and extract highly compressed, structured insights.
 
@@ -189,48 +201,28 @@ class ConsultationLLM:
             print(f"[ERROR] Failed to connect to new Gradio URL ({new_url}): {e}")
             return False
             
-    def generate_consultation_response(
-        self,
-        query: str,
-        health_records_context: str,
-        current_consultation_context: str,
-        timeline_context: str,
-    ) -> str:
+    def agentic_chat(self, messages: List[Dict[str, str]]) -> str:
         """
-        Constructs the RAG prompt and calls the remote Gradio API.
-
-        Args:
-            query: The raw user query text.
-            health_records_context: Pre-formatted string from ai.format_health_records_context().
-                                   Injected directly into the RAG prompt.
-            current_consultation_context: Pre-formatted string describing the current session.
-            timeline_context: Pre-formatted string of recent conversation turns.
-
-        Returns:
-            The model's response string, or an error message string.
+        Passes the fully constructed native Chat Template message array directly
+        to the MedGemma Gradio proxy running on Kaggle.
         """
         if not self.client:
-            return "Error: Gradio client not initialized. Ensure GRADIO_API_URL is set and /update_gradio_url has been called."
-
-        # Use a fallback if context is empty
-        resolved_health_context = health_records_context or "No highly relevant historical records found (Similarity < 0.50)."
-
-        # Build the full prompt from the template
-        final_prompt = RAG_SYSTEM_PROMPT_TEMPLATE.format(
-            current_consultation_context=current_consultation_context,
-            timeline_context=timeline_context or "No prior history in this session.",
-            user_health_records_context=resolved_health_context,
-            user_query=query,
-        )
+            return "[ERROR] Gradio client not initialized. Ensure GRADIO_API_URL is set and /update_gradio_url has been called."
 
         try:
-            generated_text = self.client.predict(
-                final_prompt,
-                api_name="/predict",
+            # We serialize the message list into a JSON string because the
+            # Gradio Textbox element only natively handles raw strings.
+            # The Kaggle script parses it back into a Python List[Dict].
+            payload_str = json.dumps(messages)
+            
+            result = self.client.predict(
+                payload_str,
+                api_name="/predict"
             )
-            return generated_text
+            return result
         except Exception as e:
-            return f"Error connecting to Gradio API at {self.gradio_url}: {e}"
+            print(f"[ERROR] LLM Request Failed: {e}")
+            return f"[ERROR] The Agent backend failed to respond: {e}"
         
 
 class DataProcessingLLM:
