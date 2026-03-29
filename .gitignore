@@ -1,4 +1,4 @@
-﻿# Environment variables
+# Environment variables
 .env
 .env.*
 
@@ -55,6 +55,14 @@ flask_session/
 *.db
 *.sqlite
 *.sqlite3
+
+# Data
+datasets/
+
+# Local tests
+test.py
+test2*.py
+test.ipynb
 
 # Secrets / Keys
 *.pem
