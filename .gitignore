@@ -63,6 +63,8 @@ datasets/
 test.py
 test2*.py
 test.ipynb
+start.ps1
+seed_db.py
 
 # Secrets / Keys
 *.pem
