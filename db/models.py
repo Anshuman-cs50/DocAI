@@ -30,6 +30,7 @@ class Consultation(Base):
     embedding_vector = Column(Vector(VECTOR_DIMENSION), nullable=True)
     created_at = Column(DateTime, default=func.now())  
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    is_active = Column(Boolean, default=True, index=True)
 
     # Tracking the last time we ran the condition detection LLM
     last_condition_check_at = Column(DateTime, default=func.now())

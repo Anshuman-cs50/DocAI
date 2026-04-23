@@ -47,6 +47,14 @@ def get_recent_consultations(db: Session, user_id: int, limit: int = 5):
 def get_consultation_by_id(db: Session, consultation_id: int):
     return db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
 
+def end_consultation(db: Session, consultation_id: int):
+    consultation = db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
+    if consultation:
+        consultation.is_active = False
+        db.commit()
+        db.refresh(consultation)
+    return consultation
+
 
 def get_unsummarized_timeline_entries(db: Session, consultation_id: int, limit: int = 10):
     """

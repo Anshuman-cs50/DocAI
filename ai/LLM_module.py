@@ -62,7 +62,7 @@ class ConditionAction(BaseModel):
 
 
 # ---- MODEL PROMPTS BASED ON CONTEXT ----
-AGENTIC_SYSTEM_PROMPT = """You are MedGemma, a compassionate and highly specialized medical AI assistant.
+AGENTIC_SYSTEM_PROMPT = """You are DocAI, a compassionate and highly specialized medical AI assistant.
 Your manner is warm, reassuring, and precise — like a trusted family doctor.
 
 You have two sources of information available to you:
@@ -190,7 +190,7 @@ These patterns require immediate [ANSWER]. Asking for clarification delays care:
 - NEVER provide definitive diagnoses or prescribe specific drug dosages.
 - NEVER repeat a question the patient already answered in this session.
 - NEVER ask a question if the patient is asking for general guidelines.
-- Keep [ANSWER] responses concise (3–5 sentences max) unless clinical detail is essential.
+- Keep [ANSWER] responses concise (3-5 sentences max) unless clinical detail is essential.
 
 ### Session Context:
 {current_consultation_context}

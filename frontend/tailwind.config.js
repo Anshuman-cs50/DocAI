@@ -7,12 +7,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#0f1623',
-        textMain: '#e8e4dc',
-        accent: '#c9924a',
-        mutedTeal: '#2a6b6b',
-        slateBlue: '#4b5563', // Used for SEARCH tag
+        background: '#f8fafc',
+        surface: '#ffffff',
+        textMain: '#0f172a',
+        textMuted: '#475569',
+        accent: '#0ea5e9',
+        accentHover: '#0284c7',
+        medicalBlue: '#1e3a8a',
+        medicalCyan: '#ecfeff',
+        slateBlue: '#e2e8f0', // Used for SEARCH tag (light mode)
         successGreen: '#16a34a', // Used for ANSWER tag
+        alertRed: '#ef4444',
       },
       fontFamily: {
         serif: ['"DM Serif Display"', 'serif'],

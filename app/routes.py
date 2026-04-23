@@ -2,7 +2,7 @@
 import os
 from flask import Blueprint, jsonify, request, render_template
 from db.database import SessionLocal
-from db import crud
+from db import crud, models
 from ai import ai, MemoryManager as mm, UserConditionManager as ucm
 
 main = Blueprint("main", __name__)
@@ -209,3 +209,90 @@ def consult():
                 return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"}), 500
         
         db.close()
+
+@main.route("/end_consultation", methods=["POST"])
+def end_consultation():
+    db = SessionLocal()
+    data = request.get_json()
+    consultation_id = data.get("consultation_id")
+    
+    if not consultation_id:
+        db.close()
+        return jsonify({"error": "consultation_id is required"}), 400
+        
+    consultation = crud.end_consultation(db, consultation_id=consultation_id)
+    db.close()
+    
+    if not consultation:
+        return jsonify({"error": "Consultation not found"}), 404
+        
+    return jsonify({"message": "Consultation ended successfully"})
+
+@main.route("/get_user_profile_by_email", methods=["POST"])
+def get_user_profile_by_email():
+    db = SessionLocal()
+    data = request.get_json()
+    email = data.get("email")
+    if not email:
+        db.close()
+        return jsonify({"error": "Email is required"}), 400
+    
+    user = crud.get_user_by_email(db, email=email)
+    if not user:
+        db.close()
+        return jsonify({"error": "User not found"}), 404
+        
+    return _build_user_profile_response(db, user.id)
+
+@main.route("/get_user_profile/<int:user_id>", methods=["GET"])
+def get_user_profile(user_id):
+    db = SessionLocal()
+    user = crud.get_user_by_id(db, user_id=user_id)
+    if not user:
+        db.close()
+        return jsonify({"error": "User not found"}), 404
+        
+    return _build_user_profile_response(db, user_id)
+
+def _build_user_profile_response(db, user_id):
+    user = crud.get_user_by_id(db, user_id=user_id)
+    
+    # Get consultations
+    recent_consults = crud.get_recent_consultations(db, user_id=user_id, limit=10)
+    
+    # Get conditions
+    # We query directly or use the relationship
+    conditions = db.query(models.UserCondition).filter(models.UserCondition.user_id == user_id).all()
+    
+    # Get latest vitals
+    vitals = crud.get_latest_vitals(db, user_id=user_id)
+    
+    response_data = {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "consultations": [
+            {
+                "id": c.id,
+                "date": c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else "",
+                "title": c.heading,
+                "summary": c.summary,
+                "is_active": c.is_active
+            } for c in recent_consults
+        ],
+        "conditions": [
+            {
+                "id": cond.id,
+                "name": cond.condition_name,
+                "active": cond.is_active,
+                "type": cond.condition_type
+            } for cond in conditions
+        ],
+        "vitals": {
+            # Since get_latest_vitals returns a list of VitalsTimeSeries objects
+            v.metric_name: v.metric_value for v in vitals
+        } if vitals else {}
+    }
+    
+    db.close()
+    return jsonify(response_data)
