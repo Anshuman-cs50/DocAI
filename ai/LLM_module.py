@@ -6,8 +6,10 @@ import requests
 import re
 import contextlib
 import io
+from dotenv import load_dotenv, find_dotenv
 
-# Assuming RAG_SYSTEM_PROMPT_TEMPLATE and other necessary imports are available
+# Load .env from project root regardless of where the script is invoked from
+load_dotenv(find_dotenv(usecwd=False), override=False)
 
 # --- IMPORTANT: Placeholder for your LIVE Gradio URL ---
 # You must update this URL every time your Colab session restarts!
@@ -249,9 +251,10 @@ You are a highly efficient **Clinical Summarization Engine**. Your task is to up
 
 ### INSTRUCTIONS:
 1.  **Cumulative Focus:** The output must be a single, cohesive narrative that replaces the existing summary.
-2.  **Clinical Relevance:** Focus strictly on **chief complaints, symptom changes, medication discussions, key findings from the RAG context, and final recommendations.** Exclude conversational filler.
+2.  **Clinical Relevance:** Focus strictly on **chief complaints, symptom changes, medication discussions, key findings, and final recommendations.** Exclude conversational filler.
 3.  **Conciseness:** The final summary should be limited to **3 to 5 sentences** (maximum 80 words) to maintain scannability.
-4.  **Format:** Do not include any headings, bullet points, or introductory phrases. Start directly with the summary text only.
+4.  **Heading:** Generate a 2-3 word clinical heading that captures the primary concern (e.g. "Sleep Disturbance", "Chest Pain", "Hypertension Follow-Up").
+5.  **Format:** Output ONLY a JSON object with two keys: `heading` and `summary`. No markdown, no extra text.
 
 --- EXISTING SUMMARY (To be updated) ---
 {existing_summary}
@@ -259,7 +262,7 @@ You are a highly efficient **Clinical Summarization Engine**. Your task is to up
 --- CONVERSATION TIMELINE (New Entries) ---
 {conversation_timeline}
 
---- NEW CUMULATIVE SUMMARY ---
+--- OUTPUT (JSON ONLY) ---
 """
 
 
@@ -336,15 +339,32 @@ class DataProcessingLLM:
 
     def _clean_and_parse_json(self, raw_text: str):
         """Extracts JSON from text that might contain markdown or chatter."""
+        if not raw_text:
+            return None
+        
+        # Sanitize common LLM formatting mistakes (Python -> JSON)
+        sanitized = raw_text
+        sanitized = re.sub(r'\bNone\b', 'null', sanitized)
+        sanitized = re.sub(r'\bTrue\b', 'true', sanitized)
+        sanitized = re.sub(r'\bFalse\b', 'false', sanitized)
+        # Strip markdown code fences
+        sanitized = re.sub(r'```(?:json)?', '', sanitized).strip()
+        
         try:
-            # Use regex to find the first '{' or '[' and the last '}' or ']'
-            match = re.search(r'(\{.*\}|\[.*\])', raw_text, re.DOTALL)
+            # Try direct parse first
+            return json.loads(sanitized)
+        except json.JSONDecodeError:
+            pass
+        
+        try:
+            # Extract the outermost JSON object or array
+            match = re.search(r'(\{.*\}|\[.*\])', sanitized, re.DOTALL)
             if match:
                 return json.loads(match.group(1))
-            return json.loads(raw_text)
-        except (AttributeError) as e:
+        except (json.JSONDecodeError, AttributeError) as e:
             print(f"[ERROR] JSON Parsing failed: {e}")
-            return None
+        
+        return None
 
     def _call_hf_api(self, prompt: str, schema_json: Optional[Dict[str, Any]] = None) -> str:
         headers = {
@@ -370,7 +390,7 @@ class DataProcessingLLM:
             
         except Exception as e:
             print(f"API Call Failed: {e}")
-            return f'{{"error": "{str(e)}"}}'
+            raise RuntimeError(f"HuggingFace API Error: {str(e)}")
 
     def extract_insights(self, user_query: str, model_response: str) -> ExtractionInsights:
         prompt = INSIGHTS_EXTRACTION_PROMPT_TEMPLATE.format(
@@ -382,16 +402,9 @@ class DataProcessingLLM:
         raw_text = self._call_hf_api(prompt, schema_json=ExtractionInsights.model_json_schema())
         data = self._clean_and_parse_json(raw_text)
         
-        # Guard against API failures returning {"error": "..."} dicts
-        if not data or "error" in data:
-            if "error" in (data or {}):
-                print(f"[WARNING] API Error during extraction: {data['error']}")
-            return ExtractionInsights(
-                insight_found=False,
-                compressed_summary="",
-                primary_condition_or_symptom="",
-                icd_codes_extracted=[]
-            )
+        # Guard against JSON parsing failures if the API succeeded but returned garbage
+        if not data:
+            raise ValueError("Failed to parse LLM response into JSON.")
             
         return ExtractionInsights(**data)
 
@@ -408,32 +421,26 @@ class DataProcessingLLM:
         )
 
         raw_text = self._call_hf_api(prompt, schema_json=ConditionAction.model_json_schema())
+        print(f"[DEBUG condition raw] {raw_text[:300]}")
         data = self._clean_and_parse_json(raw_text)
+        print(f"[DEBUG condition parsed] {data}")
 
-        # Guard against API failures returning {"error": "..."} dicts
-        if not data or (isinstance(data, dict) and "error" in data):
-            if isinstance(data, dict) and "error" in data:
-                print(f"[WARNING] API Error during detection: {data['error']}")
-            return []
-        
+        # Guard against JSON parsing failures
+        if not data:
+            raise ValueError("Failed to parse LLM response into JSON.")
         # Ensure result is a list even if LLM returned a single object
         items = data if isinstance(data, list) else [data]
         return [ConditionAction(**item) for item in items]
 
-    def summarise(self, existing_summary: str, formatted_timeline: str) -> str:
+    def summarise(self, existing_summary: str, formatted_timeline: str):
         """
-        Generates an updated cumulative clinical summary.
-
-        Args:
-            existing_summary: The current summary stored in the database.
-            formatted_timeline: A pre-formatted string of recent conversation turns,
-                               produced by MemoryManager.format_timeline_for_summarization().
+        Generates an updated cumulative clinical summary and a short heading.
 
         Returns:
-            Updated summary string, or the original if no new content.
+            Tuple of (heading: str, summary: str)
         """
         if not formatted_timeline:
-            return existing_summary
+            return None, existing_summary
 
         prompt = SUMMARIZATION_PROMPT_TEMPLATE.format(
             existing_summary=existing_summary or "None.",
@@ -441,9 +448,16 @@ class DataProcessingLLM:
         )
 
         raw_text = self._call_hf_api(prompt)
-        # Strip common LLM artifacts (headings, trailing separators)
-        clean_summary = raw_text.strip().split("---")[-1].strip()
-        return clean_summary if clean_summary else existing_summary
+        data = self._clean_and_parse_json(raw_text)
+
+        if data and isinstance(data, dict):
+            heading = data.get("heading", "").strip() or None
+            summary = data.get("summary", "").strip() or existing_summary
+            return heading, summary
+
+        # Fallback: treat the whole response as the summary text
+        clean = raw_text.strip().split("---")[-1].strip()
+        return None, clean if clean else existing_summary
 
 if __name__ == "__main__":
     # Note: Since this block is meant for testing, we will mock the

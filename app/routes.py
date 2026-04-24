@@ -4,6 +4,8 @@ from flask import Blueprint, jsonify, request, render_template
 from db.database import SessionLocal
 from db import crud, models
 from ai import ai, MemoryManager as mm, UserConditionManager as ucm
+from ai.post_processing import run_end_of_session_pipeline
+import threading
 
 main = Blueprint("main", __name__)
 
@@ -193,20 +195,35 @@ def consult():
     finally:
         # --- PERSISTENCE BLOCK ---
         if user_query and result:
-            # Simply store the raw chat for history. 
-            # Insight extraction & embedding generation are deferred to the end of the session.
-            try:
-                crud.add_timeline_entry(
-                    db=db,
-                    consultation_id=consultation_id,
-                    user_query=user_query,
-                    model_response=result["model_response"],
-                    insights="Pending End-of-Session Extraction",
-                    embedding_vector=None
-                )
-                print(f"[OK] Timeline entry stored.")
-            except Exception as e:
-                return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"}), 500
+            model_response_text = result.get("model_response", "")
+            
+            # Do NOT persist if the LLM returned an error - error responses
+            # poison the context window and degrade future model quality.
+            # Note: errors can be wrapped in [ANSWER] tags by the second agent pass,
+            # so we check for [ERROR] *anywhere* in the response.
+            is_error_response = (
+                not model_response_text
+                or "[ERROR]" in model_response_text
+                or "failed to respond" in model_response_text.lower()
+            )
+
+            if is_error_response:
+                print(f"[WARN] LLM returned an error response — skipping DB write to protect context window.")
+            else:
+                # Simply store the raw chat for history.
+                # Insight extraction & embedding generation are deferred to the end of the session.
+                try:
+                    crud.add_timeline_entry(
+                        db=db,
+                        consultation_id=consultation_id,
+                        user_query=user_query,
+                        model_response=model_response_text,
+                        insights="Pending End-of-Session Extraction",
+                        embedding_vector=None
+                    )
+                    print(f"[OK] Timeline entry stored.")
+                except Exception as e:
+                    return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"}), 500
         
         db.close()
 
@@ -225,6 +242,9 @@ def end_consultation():
     
     if not consultation:
         return jsonify({"error": "Consultation not found"}), 404
+        
+    # Trigger the end-of-session background pipeline
+    threading.Thread(target=run_end_of_session_pipeline, args=(consultation_id,)).start()
         
     return jsonify({"message": "Consultation ended successfully"})
 
@@ -258,7 +278,16 @@ def _build_user_profile_response(db, user_id):
     user = crud.get_user_by_id(db, user_id=user_id)
     
     # Get consultations
-    recent_consults = crud.get_recent_consultations(db, user_id=user_id, limit=10)
+    recent_consults = crud.get_recent_consultations(db, user_id=user_id, limit=20)
+    
+    valid_consults = []
+    for c in recent_consults:
+        # Filter out inactive consultations that have 0 timeline entries
+        if not c.is_active:
+            count = db.query(models.ConsultationTimeline).filter_by(consultation_id=c.id).count()
+            if count == 0:
+                continue
+        valid_consults.append(c)
     
     # Get conditions
     # We query directly or use the relationship
@@ -278,7 +307,8 @@ def _build_user_profile_response(db, user_id):
                 "title": c.heading,
                 "summary": c.summary,
                 "is_active": c.is_active
-            } for c in recent_consults
+            }
+            for c in valid_consults
         ],
         "conditions": [
             {

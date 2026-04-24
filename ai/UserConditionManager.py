@@ -9,8 +9,7 @@ from .LLM_module import ConditionAction, DataProcessingLLM
 data_processing_llm = DataProcessingLLM()
 embedder = embedding.MedicalEmbedder()
 
-# define the threshold for condition checking
-CONDITION_CHECK_THRESHOLD = 5
+# (Threshold removed to support End-of-Session processing)
 
 def check_and_log_user_conditions(
     db: Session,
@@ -56,10 +55,10 @@ def check_and_log_user_conditions(
             "errors": [str(e)]
         }
     
-    if len(new_entries) < CONDITION_CHECK_THRESHOLD:
+    if len(new_entries) == 0:
         return {
             "success": True,
-            "message": "No new conditions to log at this time.",
+            "message": "No new entries to analyze for conditions.",
             "details": None,
             "errors": None
         }
@@ -71,7 +70,14 @@ def check_and_log_user_conditions(
             raise ValueError(f"Consultation {consultation_id} not found")
         
         summary_context = current_consultation.summary or "No summary available."
-        new_entries_context = [entry.model_response for entry in new_entries]
+        # Use compressed insights where available — they're shorter and more signal-dense
+        # Fall back to the raw USER/MODEL turn only if no insight was extracted yet
+        new_entries_context = []
+        for entry in new_entries:
+            if entry.insights and entry.insights not in ("Pending End-of-Session Extraction", "No clinical insight extracted."):
+                new_entries_context.append(entry.insights)
+            else:
+                new_entries_context.append(f"USER: {entry.user_query}\nMODEL: {entry.model_response}")
     except Exception as e:
         return {
             "success": False,
@@ -142,10 +148,25 @@ def check_and_log_user_conditions(
                     )
                     log_messages.append(f"Updated: {condition.condition_name} (ID: {condition.condition_id})")
                 else:
-                    # Log an error if the model proposed an update for a non-existent ID
-                    log_errors.append(f"Update failed: Condition ID {condition.condition_id} not found.")
+                    # The model used a placeholder ID — this condition doesn't exist yet.
+                    # Fall back to adding it as a new condition instead.
+                    print(f"[INFO] Condition ID {condition.condition_id} not found, adding as new condition: {condition.condition_name}")
+                    embedding_vector = embedder.generate_embedding_for_condition(condition)
+                    crud.add_user_condition(
+                        db,
+                        condition_name=condition.condition_name,
+                        condition_type=condition.condition_type,
+                        source_type="consultation",
+                        consultation_id=consultation_id,
+                        user_id=current_consultation.user_id,
+                        diagnosis_date=func.now(),
+                        is_active=condition.is_active,
+                        notes=condition.notes,
+                        embedding_vector=embedding_vector
+                    )
+                    log_messages.append(f"Added (from update fallback): {condition.condition_name}")
             except Exception as e:
-                log_errors.append(f"Error updating condition ID {condition.condition_id}: {str(e)}")
+                log_errors.append(f"Error processing condition ID {condition.condition_id}: {str(e)}")
     
     # Update the last condition check time
     try:
