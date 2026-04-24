@@ -61,6 +61,52 @@ export default function ConsultationPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const [expandedSystemMessages, setExpandedSystemMessages] = useState({});
+  const toggleSystemMessage = (idx) => {
+    setExpandedSystemMessages(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
+  const SYSTEM_PREVIEW_CHARS = 180;
+
+  const parseResponse = (rawText, timestamp, isTyping) => {
+    const parts = [];
+    const regex = /\[(SEARCH|ASK|ANSWER|SYSTEM)\]([\s\S]*?)(?=\[(SEARCH|ASK|ANSWER|SYSTEM)\]|$)/g;
+    let match;
+    let found = false;
+    
+    while ((match = regex.exec(rawText)) !== null) {
+      found = true;
+      const tag = match[1];
+      const text = match[2].trim();
+      
+      if (tag === 'SYSTEM') {
+        parts.push({
+          role: 'system',
+          text: text,
+          timestamp: timestamp
+        });
+      } else {
+        parts.push({
+          role: 'model',
+          tag: tag,
+          text: text,
+          timestamp: timestamp,
+          isTyping: isTyping && tag === 'ANSWER'
+        });
+      }
+    }
+    
+    if (!found) {
+      parts.push({
+        role: 'model',
+        tag: 'ANSWER',
+        text: rawText,
+        timestamp: timestamp,
+        isTyping: isTyping
+      });
+    }
+    return parts;
+  };
+
   const fetchHistory = async () => {
     try {
       setStatus("Loading history...");
@@ -80,21 +126,12 @@ export default function ConsultationPage() {
             timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           });
           
-          let tag = "ANSWER";
-          let rawText = item.model_response || "";
-          const match = rawText.match(/^\[(SEARCH|ASK|ANSWER)\](.*)/s);
-          if (match) {
-            tag = match[1];
-            rawText = match[2].trim();
-          }
-          
-          mappedMessages.push({
-            role: 'model',
-            tag: tag,
-            text: rawText,
-            timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isTyping: false
-          });
+          const parts = parseResponse(
+            item.model_response || "", 
+            new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
+            false
+          );
+          mappedMessages.push(...parts);
         });
         
         setMessages(mappedMessages);
@@ -153,22 +190,12 @@ export default function ConsultationPage() {
       const data = await res.json();
       
       if (res.ok) {
-        let tag = "ANSWER";
-        let rawText = data.response || "";
-        
-        const match = rawText.match(/^\[(SEARCH|ASK|ANSWER)\](.*)/s);
-        if (match) {
-          tag = match[1];
-          rawText = match[2].trim();
-        }
-        
-        setMessages(prev => [...prev, {
-          role: 'model',
-          tag: tag,
-          text: rawText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isTyping: true
-        }]);
+        const parts = parseResponse(
+          data.response || "", 
+          new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
+          true
+        );
+        setMessages(prev => [...prev, ...parts]);
       } else {
         alert("Error from AI: " + data.error);
         setStatus("Awaiting Input");
@@ -233,32 +260,53 @@ export default function ConsultationPage() {
         )}
         
         {messages.map((msg, idx) => (
-          <div key={idx} className={`flex flex-col w-full max-w-4xl mx-auto ${msg.role === 'patient' ? 'items-end' : 'items-start'}`}>
-            <div className="flex items-center gap-2 mb-1.5 px-1">
-              <span className={`font-mono text-[10px] uppercase font-bold tracking-wider ${msg.role === 'patient' ? 'text-medicalBlue' : 'text-accent'}`}>
-                {msg.role === 'patient' ? user?.name : 'DocAI'}
-              </span>
-              <span className="font-mono text-[10px] text-textMuted">{msg.timestamp}</span>
-            </div>
-            
-            <div className={`p-4 rounded-2xl shadow-sm border ${
-              msg.role === 'patient' 
-                ? 'bg-medicalBlue text-white border-medicalBlue rounded-tr-sm' 
-                : 'bg-white text-textMain border-slateBlue/40 rounded-tl-sm'
-            }`}>
-              {msg.role === 'model' && (
-                <div className={`inline-block font-mono text-[10px] font-bold px-2 py-0.5 rounded-md mb-2 shadow-sm ${getTagColor(msg.tag)}`}>
-                  [{msg.tag}]
-                </div>
-              )}
-              <div className="font-sans text-sm leading-relaxed whitespace-pre-wrap">
-                {msg.isTyping ? (
-                  <TypewriterText text={msg.text} onComplete={() => handleTypewriterComplete(idx)} />
-                ) : (
-                  msg.text
+          <div key={idx} className={`flex flex-col w-full max-w-4xl mx-auto ${msg.role === 'patient' ? 'items-end' : msg.role === 'system' ? 'items-center my-6' : 'items-start'}`}>
+            {msg.role === 'system' ? (
+              <div className="bg-medicalCyan/50 border border-medicalTeal/20 px-4 py-3 rounded-md font-mono text-xs text-medicalBlue w-full max-w-2xl shadow-sm">
+                <div className="font-bold text-[10px] uppercase tracking-widest mb-2 opacity-60">⚡ Search Results Injected</div>
+                <p className="whitespace-pre-wrap leading-relaxed">
+                  {expandedSystemMessages[idx] || msg.text.length <= SYSTEM_PREVIEW_CHARS
+                    ? msg.text
+                    : msg.text.slice(0, SYSTEM_PREVIEW_CHARS) + '…'}
+                </p>
+                {msg.text.length > SYSTEM_PREVIEW_CHARS && (
+                  <button
+                    onClick={() => toggleSystemMessage(idx)}
+                    className="mt-2 text-[10px] font-bold text-medicalBlue/70 hover:text-medicalBlue underline underline-offset-2 transition-colors"
+                  >
+                    {expandedSystemMessages[idx] ? 'Show less ▲' : 'Show more ▼'}
+                  </button>
                 )}
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1.5 px-1">
+                  <span className={`font-mono text-[10px] uppercase font-bold tracking-wider ${msg.role === 'patient' ? 'text-medicalBlue' : 'text-accent'}`}>
+                    {msg.role === 'patient' ? user?.name : 'DocAI'}
+                  </span>
+                  <span className="font-mono text-[10px] text-textMuted">{msg.timestamp}</span>
+                </div>
+                
+                <div className={`p-4 rounded-2xl shadow-sm border ${
+                  msg.role === 'patient' 
+                    ? 'bg-medicalBlue text-white border-medicalBlue rounded-tr-sm' 
+                    : 'bg-white text-textMain border-slateBlue/40 rounded-tl-sm'
+                }`}>
+                  {msg.role === 'model' && (
+                    <div className={`inline-block font-mono text-[10px] font-bold px-2 py-0.5 rounded-md mb-2 shadow-sm ${getTagColor(msg.tag)}`}>
+                      [{msg.tag}]
+                    </div>
+                  )}
+                  <div className="font-sans text-sm leading-relaxed whitespace-pre-wrap">
+                    {msg.isTyping ? (
+                      <TypewriterText text={msg.text} onComplete={() => handleTypewriterComplete(idx)} />
+                    ) : (
+                      msg.text
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         ))}
         {status === 'Processing' && (

@@ -15,8 +15,8 @@ export default {
         accentHover: '#0284c7',
         medicalBlue: '#1e3a8a',
         medicalCyan: '#ecfeff',
-        slateBlue: '#e2e8f0', // Used for SEARCH tag (light mode)
-        successGreen: '#16a34a', // Used for ANSWER tag
+        slateBlue: '#e2e8f0',
+        successGreen: '#16a34a',
         alertRed: '#ef4444',
       },
       fontFamily: {

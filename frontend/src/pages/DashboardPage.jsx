@@ -185,7 +185,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2 text-xs text-textMuted mb-2">
                       <Clock size={12} /> {c.date || "Unknown date"}
                     </div>
-                    <p className="text-sm text-textMuted line-clamp-2">{c.summary || "No summary available."}</p>
+                    <p className={`text-sm text-textMuted ${c.is_active !== false ? 'line-clamp-2' : ''}`}>{c.summary || "No summary available."}</p>
                   </div>
                   
                   <div className="flex gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
