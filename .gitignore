@@ -38,6 +38,7 @@ htmlcov/
 
 # Jupyter / IPython
 .ipynb_checkpoints/
+*.ipynb
 
 # Logs
 *.log
@@ -51,20 +52,24 @@ Thumbs.db
 instance/
 flask_session/
 
-# Database
+# Databases — never commit DB files
 *.db
 *.sqlite
 *.sqlite3
+*.sql
+DocAI.db
 
-# Data
+# Data & datasets
 datasets/
 
-# Local tests
+# Dev/test scripts — not part of core workflow
 test.py
 test2*.py
-test.ipynb
-start.ps1
+test_prompt.py
+kaggle_autopush_snippet.py
+notebooks/
 seed_db.py
+start.ps1
 
 # Secrets / Keys
 *.pem
