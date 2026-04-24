@@ -89,6 +89,7 @@ def generate_consultation_response(
     model_response = consultation_llm.agentic_chat(messages)
     
     user_health_records_context = ""
+    combined_response = ""
     
     if "[SEARCH]" in model_response:
         search_query = model_response.split("[SEARCH]")[-1].strip()
@@ -124,7 +125,7 @@ def generate_consultation_response(
         if "[ANSWER]" in final_answer:
             final_answer = final_answer.split("[ANSWER]")[-1].strip()
             
-        model_response = final_answer
+        combined_response = f"[SEARCH] {search_query}\n\n[SYSTEM] Search Result injected:\n{user_health_records_context}\n\n[ANSWER] {final_answer}"
 
     elif "[ASK]" in model_response:
         # The model wants live input from the patient — a lifestyle/symptom question
@@ -133,17 +134,19 @@ def generate_consultation_response(
         # at which point the model can act on it.
         asked_question = model_response.split("[ASK]")[-1].strip()
         print(f"[STEP] Agent asking patient: '{asked_question}'")
-        model_response = asked_question
+        combined_response = f"[ASK] {asked_question}"
         
     else:
         # It chose to answer directly (or hallucinated)
-        if "[ANSWER]" in model_response:
-            model_response = model_response.split("[ANSWER]")[-1].strip()
+        final_answer = model_response
+        if "[ANSWER]" in final_answer:
+            final_answer = final_answer.split("[ANSWER]")[-1].strip()
         print(f"[STEP] Agent chose to answer directly.")
+        combined_response = f"[ANSWER] {final_answer}"
         
     # 6. Return response and context
     return {
-        "model_response": model_response,
+        "model_response": combined_response,
         "timeline_context": "Native Message History Array Used",
         "user_health_records_context": user_health_records_context
     }

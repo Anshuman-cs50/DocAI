@@ -7,8 +7,10 @@ import numpy as np
 from . import models
 from .models import VECTOR_DIMENSION
 
-SIMILARITY_THRESHOLD = 0.5
-MAX_FINAL_CONTEXT_CHUNKS = 4
+SIMILARITY_THRESHOLD = 0.4
+# Safety ceiling — prevents token overflow on very large patient histories.
+# The real filter is the similarity threshold; this is just a hard backstop.
+MAX_FINAL_CONTEXT_CHUNKS = 15
 
 
 # -------------------- USER FUNCTIONS --------------------
@@ -56,24 +58,15 @@ def end_consultation(db: Session, consultation_id: int):
     return consultation
 
 
-def get_unsummarized_timeline_entries(db: Session, consultation_id: int, limit: int = 10):
+def get_unsummarized_timeline_entries(db: Session, consultation_id: int, limit: int = 50):
     """
-    Retrieves timeline entries for a consultation that were created *after* the consultation's last updated_at timestamp.
+    Retrieves timeline entries for a consultation that have not been summarized yet.
     """
-    consultation = db.query(models.Consultation.updated_at).filter(
-        models.Consultation.id == consultation_id
-    ).first()
-
-    if not consultation:
-        return []
-
-    last_update_time = consultation.updated_at
-
     return (db.query(models.ConsultationTimeline)
             .filter(
                 models.ConsultationTimeline.consultation_id == consultation_id,
-                # Filter for entries created AFTER the last summary update
-                models.ConsultationTimeline.created_at > last_update_time
+                # Filter for entries that are pending extraction
+                models.ConsultationTimeline.insights.in_([None, "", "Pending End-of-Session Extraction"])
             )
             .order_by(models.ConsultationTimeline.created_at.asc())
             .limit(limit)
@@ -140,11 +133,12 @@ def add_timeline_entry(db: Session, consultation_id: int, user_query: str, model
     return entry
 
 def get_recent_timeline_entries(db: Session, consultation_id: int, limit: int = 5):
-    return (db.query(models.ConsultationTimeline)
+    entries = (db.query(models.ConsultationTimeline)
               .filter(models.ConsultationTimeline.consultation_id == consultation_id)
-              .order_by(models.ConsultationTimeline.created_at.desc())  # from latest to oldest
+              .order_by(models.ConsultationTimeline.created_at.desc())  # get latest first
               .limit(limit)
               .all())
+    return entries[::-1]  # reverse to restore chronological order (oldest to newest)
 
 def get_all_timeline_entries(db: Session, consultation_id: int):
     return (db.query(models.ConsultationTimeline)
@@ -380,10 +374,40 @@ def semantic_search_records(
             ORDER BY consultations.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))
             LIMIT :k_consultations
         ),
+        timeline_ranked AS (
+            SELECT 
+                timeline.insights AS text_snippet,
+                consultations.heading AS title,
+                timeline.created_at AS date,
+                'Clinical Insight' AS type,
+                timeline.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION})) AS distance,
+                1.0 - (timeline.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))) AS similarity_score,
+                ROW_NUMBER() OVER (
+                    PARTITION BY timeline.consultation_id
+                    ORDER BY timeline.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION})) ASC
+                ) AS rn
+            FROM consultation_timeline timeline
+            JOIN consultations ON consultations.id = timeline.consultation_id
+            WHERE consultations.user_id = :user_id
+                {current_consultation_filter.replace('consultations.id', 'timeline.consultation_id')}
+                AND timeline.embedding_vector IS NOT NULL
+                AND timeline.insights IS NOT NULL
+                AND timeline.insights NOT IN ('No clinical insight extracted.', 'Pending End-of-Session Extraction')
+                AND (timeline.embedding_vector <=> CAST(:query_vec AS vector({VECTOR_DIMENSION}))) <= :distance_threshold
+        ),
+        timeline_results AS (
+            SELECT text_snippet, title, date, type, distance, similarity_score
+            FROM timeline_ranked
+            WHERE rn = 1
+            ORDER BY distance ASC
+            LIMIT :k_consultations
+        ),
         combined_records AS (
             SELECT * FROM condition_results
             UNION ALL
             SELECT * FROM consultation_results
+            UNION ALL
+            SELECT * FROM timeline_results
         )
         SELECT 
             text_snippet,
@@ -393,6 +417,8 @@ def semantic_search_records(
             distance,
             similarity_score
         FROM combined_records
+        -- Sort by relevance so the model sees the strongest signal first.
+        -- Dates are serialised per-record so the model can still reason chronologically.
         ORDER BY distance ASC
         LIMIT :max_results
     """)
