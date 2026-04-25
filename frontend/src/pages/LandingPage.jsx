@@ -49,16 +49,16 @@ export default function LandingPage() {
             DocAI replaces naive static RAG with a dynamic ReAct Agent architecture, utilizing Google's MedGemma-4b model to interact with patients and autonomously query historical health records.
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-5 mb-16">
+          <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-4 md:gap-5 mb-16 px-4 sm:px-0">
             <button 
               onClick={() => navigate('/login')}
-              className="px-8 py-4 bg-accent hover:bg-accentHover text-white font-bold rounded-xl shadow-lg transition-all hover:scale-105 hover:shadow-xl flex items-center justify-center gap-2 text-lg"
+              className="w-full sm:w-auto px-6 py-3.5 md:px-8 md:py-4 bg-accent hover:bg-accentHover text-white font-bold rounded-xl shadow-lg transition-all hover:scale-105 hover:shadow-xl flex items-center justify-center gap-2 text-base md:text-lg"
             >
               Try Live Action <ArrowRight size={20} />
             </button>
             <button 
               onClick={() => navigate('/demo')}
-              className="px-8 py-4 bg-white border-2 border-slateBlue hover:border-medicalBlue text-medicalBlue font-bold rounded-xl shadow-sm transition-all hover:bg-slateBlue/30 flex items-center justify-center gap-2 text-lg"
+              className="w-full sm:w-auto px-6 py-3.5 md:px-8 md:py-4 bg-white border-2 border-slateBlue hover:border-medicalBlue text-medicalBlue font-bold rounded-xl shadow-sm transition-all hover:bg-slateBlue/30 flex items-center justify-center gap-2 text-base md:text-lg"
             >
               View Simulation
             </button>
@@ -66,21 +66,25 @@ export default function LandingPage() {
         </div>
 
         {/* Animated Workflow Section */}
-        <div className="w-full bg-slateBlue/10 py-24 border-y border-slateBlue/30 relative overflow-hidden">
+        <div className="w-full bg-slateBlue/10 py-16 md:py-24 border-y border-slateBlue/30 relative overflow-hidden">
           <div className="max-w-7xl mx-auto px-6 flex flex-col items-center text-center">
             <h3 className="font-serif text-3xl text-textMain mb-4">How DocAI Thinks</h3>
             <p className="text-textMuted mb-16 max-w-2xl">Unlike basic chatbots, DocAI actively reasons about your symptoms and autonomously decides when to search your health history.</p>
 
-            <div className="relative w-full max-w-5xl flex flex-col md:flex-row justify-between items-center gap-12 md:gap-4 px-4">
+            <div className="relative w-full max-w-5xl flex flex-col md:flex-row justify-between items-center gap-12 md:gap-4 px-4 py-8 md:py-0">
               
               {/* Connecting Line (Desktop) */}
               <div className="hidden md:block absolute top-1/2 left-24 right-24 h-0.5 bg-slateBlue/50 -translate-y-1/2 z-0"></div>
+              {/* Connecting Line (Mobile) */}
+              <div className="block md:hidden absolute top-12 bottom-12 left-1/2 w-0.5 bg-slateBlue/50 -translate-x-1/2 z-0"></div>
               
               {/* Animated Dot (Desktop) */}
               <div className="hidden md:block absolute top-1/2 left-24 w-4 h-4 bg-accent rounded-full -translate-y-1/2 -mt-2 shadow-[0_0_15px_rgba(255,107,107,0.8)] z-10 animate-[travel_6s_ease-in-out_infinite]"></div>
+              {/* Animated Dot (Mobile) */}
+              <div className="block md:hidden absolute top-12 left-1/2 w-4 h-4 bg-accent rounded-full -translate-x-1/2 -ml-2 shadow-[0_0_15px_rgba(255,107,107,0.8)] z-10 animate-[travel-mobile_6s_ease-in-out_infinite]"></div>
 
               {/* Step 1: User Input */}
-              <div className="relative z-10 flex flex-col items-center bg-white p-6 rounded-2xl shadow-md border border-medicalCyan/50 w-full md:w-64">
+              <div className="relative z-10 flex flex-col items-center bg-white p-6 rounded-2xl shadow-md border border-medicalCyan/50 w-full max-w-sm md:w-64">
                 <div className="w-16 h-16 bg-medicalCyan/30 text-medicalBlue rounded-full flex items-center justify-center mb-4 border-2 border-medicalCyan">
                   <span className="text-2xl">💬</span>
                 </div>
@@ -89,7 +93,7 @@ export default function LandingPage() {
               </div>
 
               {/* Step 2: Agent Reasoning */}
-              <div className="relative z-10 flex flex-col items-center bg-white p-6 rounded-2xl shadow-xl border-2 border-medicalBlue w-full md:w-72 transform md:-translate-y-4">
+              <div className="relative z-10 flex flex-col items-center bg-white p-6 rounded-2xl shadow-xl border-2 border-medicalBlue w-full max-w-sm md:w-72 transform md:-translate-y-4">
                 <div className="absolute -top-3 px-3 py-1 bg-medicalBlue text-white text-[10px] font-bold rounded-full uppercase tracking-wider">ReAct Loop</div>
                 <div className="w-20 h-20 bg-medicalBlue text-white rounded-full flex items-center justify-center mb-4 shadow-lg animate-[pulse_3s_ease-in-out_infinite]">
                   <BrainCircuit size={36} />
@@ -99,7 +103,7 @@ export default function LandingPage() {
               </div>
 
               {/* Step 3: Personalized Response */}
-              <div className="relative z-10 flex flex-col items-center bg-white p-6 rounded-2xl shadow-md border border-medicalCyan/50 w-full md:w-64">
+              <div className="relative z-10 flex flex-col items-center bg-white p-6 rounded-2xl shadow-md border border-medicalCyan/50 w-full max-w-sm md:w-64">
                 <div className="w-16 h-16 bg-successGreen/20 text-successGreen rounded-full flex items-center justify-center mb-4 border-2 border-successGreen/50">
                   <span className="text-2xl">✨</span>
                 </div>
@@ -118,6 +122,14 @@ export default function LandingPage() {
               60% { left: 50%; transform: translate(-50%, -50%) scale(1.5); }
               90% { opacity: 1; }
               100% { left: 90%; opacity: 0; }
+            }
+            @keyframes travel-mobile {
+              0% { top: 5%; opacity: 0; }
+              10% { opacity: 1; }
+              40% { top: 50%; transform: translate(-50%, -50%) scale(1.5); }
+              60% { top: 50%; transform: translate(-50%, -50%) scale(1.5); }
+              90% { opacity: 1; }
+              100% { top: 95%; opacity: 0; }
             }
           `}} />
         </div>
