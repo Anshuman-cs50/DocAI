@@ -57,6 +57,34 @@ def create_user(
         
     return user
 
+def update_user_profile(
+    db: Session, 
+    user_id: int, 
+    age: int = None, 
+    gender: str = None,
+    blood_type: str = None,
+    height_cm: float = None,
+    weight_kg: float = None
+):
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+        
+    if age is not None:
+        user.age = age
+    if gender is not None:
+        user.gender = gender
+    if blood_type is not None:
+        user.blood_type = blood_type
+    if height_cm is not None:
+        user.height_cm = height_cm
+    if weight_kg is not None:
+        user.weight_kg = weight_kg
+        
+    db.commit()
+    db.refresh(user)
+    return user
+
 def get_user_by_id(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
@@ -65,6 +93,20 @@ def get_user_by_email(db: Session, email: str):
 
 
 # -------------------- CONSULTATION FUNCTIONS --------------------
+
+def resolve_user_condition(db: Session, user_id: int, condition_name: str):
+    condition = db.query(models.UserCondition).filter(
+        models.UserCondition.user_id == user_id,
+        models.UserCondition.condition_name == condition_name,
+        models.UserCondition.is_active == True
+    ).first()
+    
+    if condition:
+        condition.is_active = False
+        db.commit()
+        db.refresh(condition)
+        return True
+    return False
 
 def create_consultation(db: Session, user_id: int, heading: str, reference: int = None):
     # Ensure reference is int as per FK, not str as in old function signature 

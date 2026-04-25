@@ -96,11 +96,18 @@ def generate_consultation_response(
     )
     
     from .MemoryManager import format_timeline_as_messages
-    from .LLM_module import AGENTIC_SYSTEM_PROMPT
+    from .LLM_module import AGENTIC_SYSTEM_PROMPT, RESOLUTION_SYSTEM_PROMPT
     
     messages = format_timeline_as_messages(consultation_timeline_entries)
     
-    system_prompt = AGENTIC_SYSTEM_PROMPT.format(current_consultation_context=current_consultation_context)
+    if current_consultation and current_consultation.heading and current_consultation.heading.startswith("Resolution Assessment:"):
+        condition_name = current_consultation.heading.split(":", 1)[1].strip()
+        system_prompt = RESOLUTION_SYSTEM_PROMPT.format(
+            target_condition=condition_name,
+            current_consultation_context=current_consultation_context
+        )
+    else:
+        system_prompt = AGENTIC_SYSTEM_PROMPT.format(current_consultation_context=current_consultation_context)
     
     if len(messages) == 0:
         messages.append({"role": "user", "content": system_prompt + "\n\nUser Query:\n" + user_query})
@@ -147,10 +154,35 @@ def generate_consultation_response(
         print(f"[STEP] Agent Pass 2 (Answering Mode)...")
         final_answer = consultation_llm.agentic_chat(messages)
         
-        if "[ANSWER]" in final_answer:
+        if "[SYSTEM] RESOLVE_CONDITION" in final_answer:
+            print("[STEP] Agent requested RESOLVE_CONDITION in Pass 2")
+            if current_consultation and current_consultation.heading and current_consultation.heading.startswith("Resolution Assessment:"):
+                condition_name = current_consultation.heading.split(":", 1)[1].strip()
+                success = crud.resolve_user_condition(db, user_id, condition_name)
+                if success:
+                    crud.end_consultation(db, consultation_id)
+                    final_answer = f"I have successfully verified your recovery. I have officially marked {condition_name} as resolved in your medical profile."
+                else:
+                    final_answer = "I encountered an error resolving your condition in the database."
+            else:
+                final_answer = "I am unable to resolve this condition outside of a Resolution Assessment consultation."
+        elif "[ANSWER]" in final_answer:
             final_answer = final_answer.split("[ANSWER]")[-1].strip()
             
         combined_response = f"[SEARCH] {search_query}\n\n[SYSTEM] Search Result injected:\n{user_health_records_context}\n\n[ANSWER] {final_answer}"
+
+    elif "[SYSTEM] RESOLVE_CONDITION" in model_response:
+        print("[STEP] Agent requested RESOLVE_CONDITION")
+        if current_consultation and current_consultation.heading and current_consultation.heading.startswith("Resolution Assessment:"):
+            condition_name = current_consultation.heading.split(":", 1)[1].strip()
+            success = crud.resolve_user_condition(db, user_id, condition_name)
+            if success:
+                crud.end_consultation(db, consultation_id)
+                combined_response = f"[SYSTEM] RESOLVE_CONDITION\n\nI have successfully verified your recovery. I have officially marked {condition_name} as resolved in your medical profile."
+            else:
+                combined_response = "[ANSWER] I encountered an error resolving your condition in the database."
+        else:
+            combined_response = "[ANSWER] I am unable to resolve this condition outside of a Resolution Assessment consultation."
 
     elif "[ASK]" in model_response:
         # The model wants live input from the patient — a lifestyle/symptom question

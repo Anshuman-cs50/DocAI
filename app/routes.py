@@ -318,6 +318,46 @@ def get_user_profile_by_email():
         
     return _build_user_profile_response(db, user.id)
 
+@main.route("/update_profile", methods=["POST"])
+def update_profile():
+    db = SessionLocal()
+    data = request.get_json()
+    
+    user_id = data.get("user_id")
+    if not user_id:
+        db.close()
+        return jsonify({"error": "User ID is required"}), 400
+        
+    age = data.get("age")
+    gender = data.get("gender")
+    blood_type = data.get("blood_type")
+    height_cm = data.get("height_cm")
+    weight_kg = data.get("weight_kg")
+    
+    # Convert empty strings to None and parse numbers
+    age = int(age) if age else None
+    height_cm = float(height_cm) if height_cm else None
+    weight_kg = float(weight_kg) if weight_kg else None
+    gender = gender if gender else None
+    blood_type = blood_type if blood_type else None
+    
+    user = crud.update_user_profile(
+        db, 
+        user_id=user_id,
+        age=age,
+        gender=gender,
+        blood_type=blood_type,
+        height_cm=height_cm,
+        weight_kg=weight_kg
+    )
+    
+    db.close()
+    
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+        
+    return jsonify({"message": "Profile updated successfully"})
+
 @main.route("/get_user_profile/<int:user_id>", methods=["GET"])
 def get_user_profile(user_id):
     db = SessionLocal()
