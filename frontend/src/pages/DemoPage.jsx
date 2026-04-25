@@ -110,9 +110,41 @@ export default function DemoPage() {
     setIsPlaying(true);
   };
 
+  const getTourGuideContent = () => {
+    if (!isPlaying && messages.length === 0) return { title: "Welcome", text: "Click 'Start Demo' to see the ReAct loop in action." };
+    if (!isPlaying && messages.length > 0) return { title: "Simulation Complete", text: "You've seen the Agentic architecture in action! Head to the Login page or deploy this to Vercel." };
+    
+    switch (demoIndex) {
+      case 1: return { title: "Step 1: Patient Input", text: "The patient inputs their symptom." };
+      case 2: return { title: "Step 2: AI Gathers Context", text: "Notice how DocAI doesn't just guess. It autonomously decides to [ASK] a targeted follow-up question to gather more context." };
+      case 4: return { title: "Step 3: Semantic Search", text: "Now DocAI uses BioBERT to semantically [SEARCH] the patient's medical history for relevant contraindications." };
+      case 5: return { title: "Step 4: Context Injection", text: "The search results are injected into the hidden system prompt." };
+      case 6: return { title: "Step 5: Precision Answer", text: "Finally, DocAI synthesizes the live symptoms with the historical database to provide a safe, personalized [ANSWER]." };
+      default: 
+        if (demoIndex > 6) return { title: "Ongoing Evaluation", text: "The agent continues to use this ReAct framework to guide the conversation safely." };
+        return null;
+    }
+  };
+
+  const tourContent = getTourGuideContent();
+
   return (
     <div className="h-screen flex flex-col bg-background font-sans relative">
       <div className="absolute inset-0 bg-watermark pointer-events-none z-0 opacity-50"></div>
+
+      {/* Floating Tour Guide */}
+      {tourContent && (
+        <div className="absolute bottom-24 right-8 z-50 w-72 bg-white border border-medicalCyan rounded-xl shadow-2xl overflow-hidden animate-[fade-in-up_0.3s_ease-out]">
+          <div className="bg-medicalCyan/20 px-4 py-2 border-b border-medicalCyan/30 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-medicalBlue animate-pulse"></span>
+            <span className="font-mono text-xs font-bold text-medicalBlue uppercase tracking-wider">Tour Guide</span>
+          </div>
+          <div className="p-4">
+            <h4 className="font-bold text-textMain text-sm mb-1">{tourContent.title}</h4>
+            <p className="text-xs text-textMuted leading-relaxed">{tourContent.text}</p>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <header className="bg-white border-b border-slateBlue/30 p-4 flex items-center justify-between z-10 shrink-0">
@@ -141,7 +173,7 @@ export default function DemoPage() {
       </header>
 
       {/* Chat Area */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 z-10 hide-scrollbar">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 z-10 hide-scrollbar pb-32">
         {messages.length === 0 && !isPlaying && (
           <div className="h-full flex flex-col items-center justify-center opacity-70">
             <Activity className="text-medicalBlue mb-4" size={48} />
@@ -212,6 +244,12 @@ export default function DemoPage() {
           ></textarea>
         </div>
       </footer>
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes fade-in-up {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}} />
     </div>
   );
 }

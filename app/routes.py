@@ -15,6 +15,10 @@ main = Blueprint("main", __name__)
 def home():
     return render_template("index.html")
 
+@main.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({"status": "ok"})
+
 
 @main.route("/update_gradio_url", methods=["POST"])
 def update_gradio_url():

@@ -9,11 +9,34 @@ export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // Backend Health State
+  const [backendReady, setBackendReady] = useState(true);
+  const [checkingBackend, setCheckingBackend] = useState(true);
 
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${API_BASE_URL}/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!res.ok) {
+          setBackendReady(false);
+        }
+      } catch (err) {
+        setBackendReady(false);
+      } finally {
+        setCheckingBackend(false);
+      }
+    };
+    checkHealth();
+  }, []);
   
   // Metadata states
   const [age, setAge] = useState('');
@@ -116,13 +139,24 @@ export default function AuthPage() {
           </p>
         </div>
 
+        {!checkingBackend && !backendReady && (
+          <div className="mb-6 p-4 bg-slateBlue/10 border border-slateBlue/30 rounded-xl flex flex-col items-center text-center">
+            <Info className="text-medicalBlue mb-2" size={24} />
+            <p className="text-textMain font-medium mb-1">The backend server is currently resting.</p>
+            <p className="text-sm text-textMuted mb-4">To save resources, the server spins down when inactive. You cannot log in right now, but you can explore the simulation!</p>
+            <button onClick={() => navigate('/demo')} className="px-4 py-2 bg-medicalBlue text-white text-sm font-medium rounded-lg hover:bg-medicalBlue/90 transition-colors">
+              View Interactive Demo
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="mb-6 p-3 bg-alertRed/10 border border-alertRed/30 rounded-lg text-alertRed text-sm text-center">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleAuth} className="space-y-5">
+        <form onSubmit={handleAuth} className={`space-y-5 ${!backendReady ? 'opacity-50 pointer-events-none' : ''}`}>
           {/* Core Fields */}
           {!isLogin && (
             <div>
