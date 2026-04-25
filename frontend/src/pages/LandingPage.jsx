@@ -13,19 +13,19 @@ export default function LandingPage() {
       <div className="absolute inset-0 bg-grid pointer-events-none opacity-50"></div>
       
       {/* Navigation */}
-      <nav className="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center relative z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-medicalBlue text-white rounded-xl flex justify-center items-center shadow-lg">
-            <Activity size={24} />
+      <nav className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex justify-between items-center relative z-10 gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-medicalBlue text-white rounded-lg sm:rounded-xl flex justify-center items-center shadow-lg shrink-0">
+            <Activity size={20} className="sm:w-6 sm:h-6" />
           </div>
-          <h1 className="font-serif text-3xl text-medicalBlue">DocAI</h1>
+          <h1 className="font-serif text-xl sm:text-3xl text-medicalBlue truncate">DocAI</h1>
         </div>
-        <div className="flex gap-4">
-          <button onClick={() => navigate('/login')} className="px-5 py-2.5 text-medicalBlue font-medium hover:bg-slateBlue/50 rounded-lg transition-colors">
+        <div className="flex gap-2 sm:gap-4 shrink-0">
+          <button onClick={() => navigate('/login')} className="px-3 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-base text-medicalBlue font-medium hover:bg-slateBlue/50 rounded-lg transition-colors">
             Login
           </button>
-          <button onClick={() => navigate('/demo')} className="px-5 py-2.5 bg-medicalBlue text-white font-medium rounded-lg shadow-md hover:bg-medicalBlue/90 transition-transform hover:scale-105 flex items-center gap-2">
-            Watch Demo <Play size={16} />
+          <button onClick={() => navigate('/demo')} className="px-3 py-2 sm:px-5 sm:py-2.5 bg-medicalBlue text-white text-sm sm:text-base font-medium rounded-lg shadow-md hover:bg-medicalBlue/90 transition-transform hover:scale-105 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
+            Watch Demo <Play size={14} className="sm:w-4 sm:h-4" />
           </button>
         </div>
       </nav>
@@ -79,9 +79,9 @@ export default function LandingPage() {
               <div className="block md:hidden absolute top-12 bottom-12 left-1/2 w-0.5 bg-slateBlue/50 -translate-x-1/2 z-0"></div>
               
               {/* Animated Dot (Desktop) */}
-              <div className="hidden md:block absolute top-1/2 left-24 w-4 h-4 bg-accent rounded-full -translate-y-1/2 -mt-2 shadow-[0_0_15px_rgba(255,107,107,0.8)] z-10 animate-[travel_6s_ease-in-out_infinite]"></div>
+              <div className="hidden md:block absolute top-1/2 left-0 w-4 h-4 bg-accent rounded-full -translate-x-1/2 -translate-y-1/2 shadow-[0_0_15px_rgba(255,107,107,0.8)] z-10 animate-[travel_6s_ease-in-out_infinite]"></div>
               {/* Animated Dot (Mobile) */}
-              <div className="block md:hidden absolute top-12 left-1/2 w-4 h-4 bg-accent rounded-full -translate-x-1/2 -ml-2 shadow-[0_0_15px_rgba(255,107,107,0.8)] z-10 animate-[travel-mobile_6s_ease-in-out_infinite]"></div>
+              <div className="block md:hidden absolute top-0 left-1/2 w-4 h-4 bg-accent rounded-full -translate-x-1/2 -translate-y-1/2 shadow-[0_0_15px_rgba(255,107,107,0.8)] z-10 animate-[travel-mobile_6s_ease-in-out_infinite]"></div>
 
               {/* Step 1: User Input */}
               <div className="relative z-10 flex flex-col items-center bg-white p-6 rounded-2xl shadow-md border border-medicalCyan/50 w-full max-w-sm md:w-64">
@@ -116,20 +116,20 @@ export default function LandingPage() {
           
           <style dangerouslySetInnerHTML={{__html: `
             @keyframes travel {
-              0% { left: 10%; opacity: 0; }
-              10% { opacity: 1; }
+              0% { left: 10%; opacity: 0; transform: translate(-50%, -50%); }
+              10% { opacity: 1; transform: translate(-50%, -50%); }
               40% { left: 50%; transform: translate(-50%, -50%) scale(1.5); }
               60% { left: 50%; transform: translate(-50%, -50%) scale(1.5); }
-              90% { opacity: 1; }
-              100% { left: 90%; opacity: 0; }
+              90% { opacity: 1; transform: translate(-50%, -50%); }
+              100% { left: 90%; opacity: 0; transform: translate(-50%, -50%); }
             }
             @keyframes travel-mobile {
-              0% { top: 5%; opacity: 0; }
-              10% { opacity: 1; }
+              0% { top: 5%; opacity: 0; transform: translate(-50%, -50%); }
+              10% { opacity: 1; transform: translate(-50%, -50%); }
               40% { top: 50%; transform: translate(-50%, -50%) scale(1.5); }
               60% { top: 50%; transform: translate(-50%, -50%) scale(1.5); }
-              90% { opacity: 1; }
-              100% { top: 95%; opacity: 0; }
+              90% { opacity: 1; transform: translate(-50%, -50%); }
+              100% { top: 95%; opacity: 0; transform: translate(-50%, -50%); }
             }
           `}} />
         </div>

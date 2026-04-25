@@ -147,27 +147,27 @@ export default function DemoPage() {
       )}
 
       {/* Header */}
-      <header className="bg-white border-b border-slateBlue/30 p-4 flex items-center justify-between z-10 shrink-0">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/')} className="p-2 text-textMuted hover:text-medicalBlue hover:bg-medicalCyan rounded-lg transition-colors">
+      <header className="bg-white border-b border-slateBlue/30 p-3 sm:p-4 flex items-center justify-between z-10 shrink-0 gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <button onClick={() => navigate('/')} className="p-1.5 sm:p-2 text-textMuted hover:text-medicalBlue hover:bg-medicalCyan rounded-lg transition-colors shrink-0">
             <ArrowLeft size={20} />
           </button>
-          <div>
-            <h1 className="font-serif text-xl text-medicalBlue flex items-center gap-2">
-              <Activity size={18} /> Simulation Mode
+          <div className="min-w-0">
+            <h1 className="font-serif text-base sm:text-xl text-medicalBlue flex items-center gap-1.5 sm:gap-2 truncate">
+              <Activity size={18} className="shrink-0" /> Simulation Mode
             </h1>
-            <div className="font-mono text-xs text-textMuted uppercase flex items-center gap-2">
-              <span>Margaret Osei (P-8472)</span>
-              <span className="w-1 h-1 rounded-full bg-slateBlue"></span>
-              <span className={isPlaying ? 'text-accent animate-pulse' : 'text-medicalBlue'}>
+            <div className="font-mono text-[9px] sm:text-xs text-textMuted uppercase flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
+              <span className="truncate">Margaret Osei (P-8472)</span>
+              <span className="hidden sm:block w-1 h-1 rounded-full bg-slateBlue shrink-0"></span>
+              <span className={`truncate ${isPlaying ? 'text-accent animate-pulse' : 'text-medicalBlue'}`}>
                 {isPlaying ? 'Running Sequence...' : (messages.length > 0 ? 'Simulation Complete' : 'Ready')}
               </span>
             </div>
           </div>
         </div>
         {!isPlaying && messages.length === 0 && (
-          <button onClick={startDemo} className="px-4 py-2 bg-medicalBlue text-white font-medium rounded-lg hover:bg-medicalBlue/90 flex items-center gap-2 transition-transform hover:scale-105">
-            <Play size={16} /> Start Demo
+          <button onClick={startDemo} className="px-3 py-1.5 sm:px-4 sm:py-2 bg-medicalBlue text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-medicalBlue/90 flex items-center gap-1 sm:gap-2 shrink-0 transition-transform hover:scale-105">
+            <Play size={14} className="sm:w-4 sm:h-4" /> Start Demo
           </button>
         )}
       </header>
