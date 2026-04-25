@@ -112,7 +112,7 @@ export default function DemoPage() {
 
   const getTourGuideContent = () => {
     if (!isPlaying && messages.length === 0) return { title: "Welcome", text: "Click 'Start Demo' to see the ReAct loop in action." };
-    if (!isPlaying && messages.length > 0) return { title: "Simulation Complete", text: "You've seen the Agentic architecture in action! Head to the Login page or deploy this to Vercel." };
+    if (!isPlaying && messages.length > 0) return { title: "Simulation Complete", text: "You've seen the Agentic architecture in action!" };
     
     switch (demoIndex) {
       case 1: return { title: "Step 1: Patient Input", text: "The patient inputs their symptom." };
