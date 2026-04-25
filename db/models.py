@@ -12,6 +12,12 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     email = Column(String(120), unique=True, index=True)
+    password_hash = Column(String(255), nullable=True) # Temporarily nullable for backwards compatibility
+    age = Column(Integer, nullable=True)
+    gender = Column(String(50), nullable=True)
+    blood_type = Column(String(10), nullable=True)
+    height_cm = Column(Numeric(5, 2), nullable=True)
+    weight_kg = Column(Numeric(5, 2), nullable=True)
     created_at = Column(DateTime, default=func.now()) # Use func.now() for database default
 
     consultations = relationship("Consultation", back_populates="user", cascade="all, delete-orphan")

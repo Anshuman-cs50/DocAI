@@ -6,6 +6,7 @@ from db import crud, models
 from ai import ai, MemoryManager as mm, UserConditionManager as ucm
 from ai.post_processing import run_end_of_session_pipeline
 import threading
+from werkzeug.security import generate_password_hash, check_password_hash
 
 main = Blueprint("main", __name__)
 
@@ -72,33 +73,86 @@ def _update_env_file(key: str, value: str):
         print(f"[WARNING] Could not update .env file: {e}")
 
 
-@main.route("/create_user", methods=["POST"])
-def test_create_user():
+@main.route("/signup", methods=["POST"])
+def signup():
     db = SessionLocal()
     data = request.get_json()
 
-    # Basic validation
-    if data["name"] is None or data["email"] is None:
-        db.close()
-        return jsonify({"message": "Name and email are required."}), 400
+    name = data.get("name")
+    email = data.get("email")
+    password = data.get("password")
     
-    # Check for existing email or user ID
-    if crud.get_user_by_email(db, email=data["email"]):
+    if not name or not email or not password:
+        db.close()
+        return jsonify({"message": "Name, email, and password are required."}), 400
+    
+    if crud.get_user_by_email(db, email=email):
         db.close()
         return jsonify({"message": "Email already registered."}), 400
     
-    if crud.get_user_by_id(db, user_id=data["id"]):
-        db.close()
-        return jsonify({"message": "User ID already exists."}), 400
+    # Hash the password
+    password_hash = generate_password_hash(password)
+    
+    # Extract metadata fields
+    age = data.get("age")
+    gender = data.get("gender")
+    blood_type = data.get("blood_type")
+    height_cm = data.get("height_cm")
+    weight_kg = data.get("weight_kg")
+    
+    # Pre-existing conditions
+    pre_existing_conditions = data.get("pre_existing_conditions", [])
     
     # Create user
-    user = crud.create_user(db, name=data["name"], email=data["email"])
+    user = crud.create_user(
+        db, 
+        name=name, 
+        email=email, 
+        password_hash=password_hash,
+        age=age,
+        gender=gender,
+        blood_type=blood_type,
+        height_cm=height_cm,
+        weight_kg=weight_kg,
+        pre_existing_conditions=pre_existing_conditions
+    )
     db.close()
+    
     return jsonify({
         "message": "User created successfully!",
         "user_id": user.id,
         "name": user.name,
         "email": user.email
+    })
+
+@main.route("/login", methods=["POST"])
+def login():
+    db = SessionLocal()
+    data = request.get_json()
+    
+    email = data.get("email")
+    password = data.get("password")
+    
+    if not email or not password:
+        db.close()
+        return jsonify({"message": "Email and password are required."}), 400
+        
+    user = crud.get_user_by_email(db, email=email)
+    
+    # Verify user exists and password matches
+    if not user or not user.password_hash or not check_password_hash(user.password_hash, password):
+        db.close()
+        return jsonify({"message": "Invalid email or password."}), 401
+        
+    user_data = {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email
+    }
+    db.close()
+    return jsonify({
+        "message": "Login successful",
+        "user": user_data
     })
 
 
@@ -300,6 +354,11 @@ def _build_user_profile_response(db, user_id):
         "id": user.id,
         "name": user.name,
         "email": user.email,
+        "age": user.age,
+        "gender": user.gender,
+        "blood_type": user.blood_type,
+        "height_cm": float(user.height_cm) if user.height_cm else None,
+        "weight_kg": float(user.weight_kg) if user.weight_kg else None,
         "consultations": [
             {
                 "id": c.id,

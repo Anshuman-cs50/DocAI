@@ -57,8 +57,33 @@ def generate_consultation_response(
     current_consultation = crud.get_consultation_by_id(db, consultation_id)
     
     current_consultation_context = ""
+    
+    # Fetch user metadata and active conditions
+    user = crud.get_user_by_id(db, user_id)
+    user_metadata = ""
+    if user:
+        age_str = f"{user.age} years old" if user.age else "Unknown age"
+        gender_str = user.gender if user.gender else "Unknown gender"
+        blood_str = f", Blood Type: {user.blood_type}" if user.blood_type else ""
+        height_str = f", Height: {user.height_cm}cm" if user.height_cm else ""
+        weight_str = f", Weight: {user.weight_kg}kg" if user.weight_kg else ""
+        
+        # Get active conditions
+        from db.models import UserCondition
+        conditions = db.query(UserCondition).filter(
+            UserCondition.user_id == user_id, 
+            UserCondition.is_active == True
+        ).all()
+        
+        cond_str = "None reported"
+        if conditions:
+            cond_str = ", ".join([c.condition_name for c in conditions])
+            
+        user_metadata = f"Patient Profile: {age_str}, {gender_str}{blood_str}{height_str}{weight_str}\nKnown Active Conditions: {cond_str}\n"
+
     if current_consultation:
         current_consultation_context = (
+            f"{user_metadata}"
             f"Current Session Heading: {current_consultation.heading}\n"
             f"Current Session Start Date: {current_consultation.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )

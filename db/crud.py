@@ -15,11 +15,46 @@ MAX_FINAL_CONTEXT_CHUNKS = 15
 
 # -------------------- USER FUNCTIONS --------------------
 
-def create_user(db: Session, name: str, email: str):
-    user = models.User(name=name, email=email)
+def create_user(
+    db: Session, 
+    name: str, 
+    email: str, 
+    password_hash: str = None, 
+    age: int = None, 
+    gender: str = None,
+    blood_type: str = None,
+    height_cm: float = None,
+    weight_kg: float = None,
+    pre_existing_conditions: List[str] = None
+):
+    user = models.User(
+        name=name, 
+        email=email, 
+        password_hash=password_hash,
+        age=age,
+        gender=gender,
+        blood_type=blood_type,
+        height_cm=height_cm,
+        weight_kg=weight_kg
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
+    
+    if pre_existing_conditions:
+        for cond_name in pre_existing_conditions:
+            if cond_name.strip():
+                condition = models.UserCondition(
+                    user_id=user.id,
+                    source_type="signup_form",
+                    condition_type="condition",
+                    condition_name=cond_name.strip(),
+                    is_active=True,
+                    notes="Reported by patient during signup"
+                )
+                db.add(condition)
+        db.commit()
+        
     return user
 
 def get_user_by_id(db: Session, user_id: int):
