@@ -16,3 +16,4 @@ pgvector
 sentence-transformers
 torch
 python-dotenv
+gradio_client
