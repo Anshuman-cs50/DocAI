@@ -11,3 +11,8 @@ google-api-python-client
 google-auth
 google-auth-oauthlib
 google-generativeai
+psycopg2-binary
+pgvector
+sentence-transformers
+torch
+python-dotenv

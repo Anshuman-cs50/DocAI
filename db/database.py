@@ -7,8 +7,8 @@ import os
 Base = declarative_base()
 
 # SQLite by default (you can replace with PostgreSQL URI later)
-# DB_URI = os.getenv("DATABASE_URI")
-DB_URI = "postgresql://admin:0987654321@localhost:5432/DocAI"
+# Load from environment variable (for Render/Supabase) or fallback to local Docker connection
+DB_URI = os.getenv("DATABASE_URL", "postgresql://admin:0987654321@localhost:5432/DocAI")
 
 """
 docker command to run db on powershell: 

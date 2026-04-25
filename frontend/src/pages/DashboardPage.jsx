@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Activity, Plus, History, LogOut, CheckCircle, Clock, HeartPulse, ChevronRight } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -21,7 +23,7 @@ export default function DashboardPage() {
 
   const fetchProfile = async (userId) => {
     try {
-      const res = await fetch(`http://127.0.0.1:5000/get_user_profile/${userId}`);
+      const res = await fetch(`${API_BASE_URL}/get_user_profile/${userId}`);
       if (res.ok) {
         const data = await res.json();
         setProfileData(data);
@@ -40,7 +42,7 @@ export default function DashboardPage() {
 
   const handleNewConsultation = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:5000/create_consultation', {
+      const res = await fetch(`${API_BASE_URL}/create_consultation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: user.id, heading: "New Live Consultation" })
@@ -61,7 +63,7 @@ export default function DashboardPage() {
     e.stopPropagation();
     if (!window.confirm('Are you sure you want to end this consultation? It will be marked as inactive.')) return;
     try {
-      const res = await fetch('http://127.0.0.1:5000/end_consultation', {
+      const res = await fetch(`${API_BASE_URL}/end_consultation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ consultation_id: consultId })

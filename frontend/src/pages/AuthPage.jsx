@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Activity, ArrowRight, User } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
+
 export default function AuthPage() {
   const navigate = useNavigate();
   const [name, setName] = useState('');
@@ -21,7 +23,7 @@ export default function AuthPage() {
 
     try {
       // First try to check if user exists
-      const checkRes = await fetch('http://127.0.0.1:5000/get_user_profile_by_email', {
+      const checkRes = await fetch(`${API_BASE_URL}/get_user_profile_by_email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -34,7 +36,7 @@ export default function AuthPage() {
         navigate('/dashboard');
       } else {
         // User doesn't exist, create them
-        const createRes = await fetch('http://127.0.0.1:5000/create_user', {
+        const createRes = await fetch(`${API_BASE_URL}/create_user`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, email, id: Math.floor(Math.random()*10000) })

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Send, ArrowLeft, Database, Activity, RefreshCw } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
+
 const TypewriterText = ({ text, delay = 18, onComplete }) => {
   const [displayed, setDisplayed] = useState("");
   const index = useRef(0);
@@ -110,7 +112,7 @@ export default function ConsultationPage() {
   const fetchHistory = async () => {
     try {
       setStatus("Loading history...");
-      const res = await fetch(`http://127.0.0.1:5000/get_consultation_history/${id}`);
+      const res = await fetch(`${API_BASE_URL}/get_consultation_history/${id}`);
       if (res.ok) {
         const data = await res.json();
         setConsultationInfo(data.consultation);
@@ -138,7 +140,7 @@ export default function ConsultationPage() {
         
         // Fetch profile to verify if active
         const savedUser = JSON.parse(localStorage.getItem('docai_user'));
-        const profRes = await fetch(`http://127.0.0.1:5000/get_user_profile/${savedUser.id}`);
+        const profRes = await fetch(`${API_BASE_URL}/get_user_profile/${savedUser.id}`);
         if (profRes.ok) {
            const profData = await profRes.json();
            const thisConsult = profData.consultations.find(c => c.id == id);
@@ -177,7 +179,7 @@ export default function ConsultationPage() {
     setStatus("Processing");
 
     try {
-      const res = await fetch('http://127.0.0.1:5000/consult', {
+      const res = await fetch(`${API_BASE_URL}/consult`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

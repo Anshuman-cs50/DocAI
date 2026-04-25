@@ -25,8 +25,9 @@ def create_app():
     """Application factory function"""
     app = Flask(__name__)
 
-    # Load configuration from config.py
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///DocAI.db')
+    # Load configuration from database.py single source of truth
+    from db.database import DB_URI
+    app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
 
     # Initialize database
     db.init_app(app)
