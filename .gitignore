@@ -1,6 +1,10 @@
 # Environment variables
 .env
 .env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 
 # Python
 __pycache__/
@@ -16,6 +20,8 @@ venv/
 env/
 .env/
 ENV/
+backend/venv/
+backend/.venv/
 
 # Distribution / packaging
 dist/
@@ -50,6 +56,7 @@ Thumbs.db
 
 # Flask / Gunicorn
 instance/
+backend/instance/
 flask_session/
 
 # Databases — never commit DB files
@@ -58,9 +65,15 @@ flask_session/
 *.sqlite3
 *.sql
 DocAI.db
+backend/*.db
 
 # Data & datasets
 datasets/
+backend/datasets/
+
+# Frontend env locals
+frontend/.env.local
+frontend/.env.*.local
 
 # Dev/test scripts — not part of core workflow
 test.py
@@ -69,9 +82,11 @@ test_prompt.py
 kaggle_autopush_snippet.py
 notebooks/
 seed_db.py
+backend/seed_db.py
 start.ps1
 
 # Secrets / Keys
 *.pem
 *.key
 secrets.json
+

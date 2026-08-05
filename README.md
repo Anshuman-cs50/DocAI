@@ -9,7 +9,6 @@ DocAI is a sophisticated, privacy-focused medical consultation system. It replac
 * **Event-Driven Memory Pipeline:** Automates background insight extraction, summarization, and active condition detection asynchronously when a consultation ends, keeping the UI blazing fast.
 * **Decoupled Backend Architecture:** Runs the heavy 4-Billion parameter MedGemma model on Kaggle's free GPU tier via an automated Gradio tunnel, keeping the local Flask server lightweight.
 * **Modern React Frontend:** Built with Vite and TailwindCSS for a responsive, dynamic user experience.
-* **One-Click Startup Automation:** Features a robust Powershell script (`start.ps1`) to spin up PostgreSQL, apply database schemas, launch the Flask backend, and the Vite frontend simultaneously.
 
 ## 🏗️ Architecture Stack
 
@@ -24,62 +23,100 @@ DocAI is a sophisticated, privacy-focused medical consultation system. It replac
 
 ```text
 DocAI/
-├── frontend/               # React (Vite) User Interface
-├── ai/                     # Core Agentic Intelligence Logic
-│   ├── ai.py               # Orchestrates the ReAct [SEARCH]/[ANSWER] loops
-│   ├── embedding.py        # Generates BioBERT vector embeddings
-│   ├── LLM_module.py       # Interfaces with HuggingFace/Gradio & houses strict Prompts
-│   ├── post_processing.py  # Background memory & summarization pipeline
-│   ├── UserConditionManager.py # Autonomous diagnosis state machine
-│   └── MemoryManager.py    # Standardizes Message arrays for history tracking
-├── app/                    # Flask Web Application
-│   ├── routes.py           # API Endpoints (/consult, /end_consultation)
-│   └── __init__.py         # App factory & config
-├── db/                     # Database schemas and CRUD operations
-├── .env                    # Secrets (HF Token, Ngrok Token, etc)
-├── start.ps1               # Automated Docker, Flask & React bootstrapper
-└── run.py                  # Backend Entry point
+├── backend/                    # Python / Flask API Server
+│   ├── run.py                  # Entry point (python run.py)
+│   ├── requirements.txt        # Python dependencies
+│   ├── render.yaml             # Render.com deployment config
+│   ├── .env                    # Secrets (not committed)
+│   ├── app/                    # Flask application
+│   │   ├── routes.py           # API endpoints (/consult, /signup, /login, ...)
+│   │   └── __init__.py         # App factory & config
+│   ├── ai/                     # Core Agentic Intelligence Logic
+│   │   ├── ai.py               # Orchestrates the ReAct [SEARCH]/[ANSWER] loops
+│   │   ├── embedding.py        # Generates BioBERT vector embeddings
+│   │   ├── LLM_module.py       # HuggingFace/Gradio interfaces & prompts
+│   │   ├── post_processing.py  # Background memory & summarization pipeline
+│   │   ├── UserConditionManager.py # Autonomous diagnosis state machine
+│   │   └── MemoryManager.py    # Message history management
+│   └── db/                     # Database schemas and CRUD operations
+│       ├── database.py         # SQLAlchemy session & URI config
+│       ├── models.py           # ORM models
+│       └── crud.py             # Database operations
+└── frontend/                   # React (Vite) User Interface
+    ├── src/                    # React components & pages
+    ├── vite.config.js          # Vite config (includes /api proxy for dev)
+    ├── .env.example            # Document env vars for production
+    └── package.json
 ```
 
 ## ⚙️ Setup and Installation
 
-### 1. Requirements
+### Requirements
 * Node.js and npm (for the React frontend)
 * Docker Desktop (for Postgres/pgvector)
 * Python 3.10+
-* A free [Ngrok](https://ngrok.com/) Account
-* A free [HuggingFace](https://huggingface.co/) Account (with user access token)
-* A [Kaggle](https://www.kaggle.com/) Account (for free GPU hosting)
+* A free [HuggingFace](https://huggingface.co/) account (with user access token)
+* A [Kaggle](https://www.kaggle.com/) account (for free GPU hosting)
 
-### 2. Environment Configuration
-Create a `.env` file in the root directory:
+---
+
+### Backend Setup
+
+```powershell
+cd backend
+
+# 1. Create and activate a virtual environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Configure environment
+# Copy .env.example to .env and fill in your values:
+# DATABASE_URI, HF_API_TOKEN, URL_UPDATE_SECRET
+```
+
+Create `backend/.env`:
 ```env
-# Database Configuration
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_USER=root
-DB_PASSWORD=root
-DB_NAME=docbase
-
-# HuggingFace & Kaggle Configuration
+DATABASE_URI=postgresql://user:password@localhost:5432/DocAI
 HF_API_TOKEN=your_hf_access_token
 URL_UPDATE_SECRET=docai-url-push-secret
+SECRET_KEY=your-secret-key
 ```
 
-### 3. Launch the Application
-Simply run the robust startup script from PowerShell. It will boot Docker, initialize pgvector, install python/npm dependencies, and launch both Flask and React servers.
 ```powershell
-.\start.ps1
+# 4. Run the Flask API server (default: http://localhost:5000)
+python run.py
 ```
 
-### 4. Boot the AI Brain (Kaggle)
-1. Upload a hosted Kaggle Notebook running the DocAI Inference server.
-2. Ensure the "T4 x2" (or better) GPU accelerator is active.
-3. Add your `HF_TOKEN`, `DOCAI_SERVER_URL` (the ngrok url printed out by `start.ps1`), and `DOCAI_SECRET` (matching your `.env`) to the Kaggle Secrets tab.
-4. Run all cells. The notebook will host MedGemma-4b on Kaggle's GPU and automatically inform your local Flask server of the secure tunnel address.
+---
 
-### 5. Chat!
-Your DocAI system is now fully synced, agentic, and ready to respond to complex medical queries while searching semantic history.
+### Frontend Setup
+
+```powershell
+cd frontend
+
+# 1. Install dependencies
+npm install
+
+# 2. Start the dev server (default: http://localhost:5173)
+#    API calls to /api/* are automatically proxied to http://localhost:5000
+npm run dev
+```
+
+For **production**, copy `frontend/.env.example` to `frontend/.env.local` and set:
+```env
+VITE_API_BASE_URL=https://your-backend.onrender.com
+```
+
+---
+
+### Boot the AI Brain (Kaggle)
+1. Upload a Kaggle Notebook running the DocAI Inference server.
+2. Ensure the "T4 x2" (or better) GPU accelerator is active.
+3. Add your `HF_TOKEN`, `DOCAI_SERVER_URL` (your deployed backend URL), and `DOCAI_SECRET` (matching `URL_UPDATE_SECRET` in `.env`) to Kaggle Secrets.
+4. Run all cells. The notebook hosts MedGemma-4b on Kaggle's GPU and automatically pushes the tunnel URL to your backend.
 
 ---
 
