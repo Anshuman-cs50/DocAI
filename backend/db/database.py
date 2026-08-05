@@ -6,8 +6,8 @@ import os
 # Define base class for models
 Base = declarative_base()
 
-# SQLite by default (you can replace with PostgreSQL URI later)
-# Load from environment variable (for Render/Supabase) or fallback to local Docker connection
+# Load from environment variable — DATABASE_URL is the standard 12-factor name
+# used by Render, Heroku, and Supabase. Falls back to local Docker.
 DB_URI = os.getenv("DATABASE_URL", "postgresql://admin:0987654321@localhost:5432/DocAI")
 
 """

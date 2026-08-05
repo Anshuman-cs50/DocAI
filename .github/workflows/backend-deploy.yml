@@ -1,0 +1,29 @@
+name: Backend CD — Deploy to Render
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-deploy.yml"
+
+  # Allow triggering manually from the GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Trigger Render Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Render deploy hook
+        # Render provides a deploy hook URL under:
+        # Dashboard → Service → Settings → Deploy Hook
+        # Add it as a GitHub secret: RENDER_DEPLOY_HOOK_URL
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            --request POST \
+            "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
+          | grep -q "^2" && echo "[OK] Render deploy triggered." \
+                         || (echo "[FAIL] Render deploy hook returned non-2xx" && exit 1)

@@ -1,3 +1,4 @@
+import os
 import numpy as np
 
 from db import crud
@@ -92,7 +93,7 @@ def generate_consultation_response(
     consultation_timeline_entries = crud.get_recent_timeline_entries(
         db,
         consultation_id=consultation_id,
-        limit=20
+        limit=int(os.environ.get("TIMELINE_NATIVE_HISTORY_LIMIT", 20))
     )
     
     from .MemoryManager import format_timeline_as_messages
@@ -139,7 +140,7 @@ def generate_consultation_response(
             user_id=user_id, 
             query_embedding=query_embedding,
             current_consultation_id=consultation_id,
-            k_consultations=4,
+            k_consultations=int(os.environ.get("SEMANTIC_SEARCH_K_INJECT", 4)),
         )
         user_health_records_context = format_health_records_context(user_health_records)
         if not user_health_records_context:

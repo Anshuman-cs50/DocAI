@@ -1,5 +1,9 @@
 import os
 from datetime import datetime
+from dotenv import load_dotenv, find_dotenv
+
+# Load .env before suppressing TF noise, so env vars are available immediately
+load_dotenv(find_dotenv(usecwd=False), override=False)
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
@@ -25,6 +29,8 @@ def create_app():
     """Application factory function"""
     app = Flask(__name__)
 
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-insecure-fallback')
+
     # Load configuration from database.py single source of truth
     from db.database import DB_URI
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
@@ -47,3 +53,4 @@ def create_app():
         return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
     return app
+

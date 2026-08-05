@@ -14,9 +14,7 @@ load_dotenv(find_dotenv(usecwd=False), override=False)
 # --- IMPORTANT: Placeholder for your LIVE Gradio URL ---
 # You must update this URL every time your Colab session restarts!
 # COLAB_GRADIO_URL = os.environ.get("GRADIO_API_URL", None) 
-COLAB_GRADIO_URL = os.environ.get("GRADIO_API_URL") 
-
-# HF_API_TOKEN = os.environ.get("HF_API_TOKEN", None)
+COLAB_GRADIO_URL = os.environ.get("GRADIO_API_URL")
 HF_API_TOKEN = os.environ.get("HF_API_TOKEN")
 # Note: You should set GRADIO_API_URL in your environment for production use, 
 # or hardcode the temporary URL for quick testing.
@@ -300,7 +298,7 @@ You are a highly efficient **Clinical Summarization Engine**. Your task is to up
 class ConsultationLLM:
     """Handles RAG-based consultation responses using MedGemma via Gradio API."""
     
-    def __init__(self, model_name: str = "medgemma-4b-it", gradio_url: str = COLAB_GRADIO_URL):
+    def __init__(self, model_name: str = os.environ.get("CONSULTATION_MODEL", "medgemma-4b-it"), gradio_url: str = COLAB_GRADIO_URL):
         self.model_name = model_name
         self.gradio_url = gradio_url
         print(f"Initializing remote LLM client for {self.model_name} at: {self.gradio_url}")
@@ -358,9 +356,9 @@ class ConsultationLLM:
         
 
 class DataProcessingLLM:
-    def __init__(self, model_name: str = "Qwen/Qwen2.5-7B-Instruct"):
+    def __init__(self, model_name: str = os.environ.get("DATA_PROCESSING_MODEL", "Qwen/Qwen2.5-7B-Instruct")):
         self.model_name = model_name
-        self.api_url = "https://router.huggingface.co/v1/chat/completions"
+        self.api_url = os.environ.get("HF_API_BASE_URL", "https://router.huggingface.co/v1/chat/completions")
         
         # HF_API_TOKEN is only strictly needed if not using huggingface-cli login
         # We suppress the explicit print to avoid terminal noise.
@@ -405,12 +403,12 @@ class DataProcessingLLM:
         payload = {
             "model": self.model_name,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 1024,
-            "temperature": 0.1
+            "max_tokens": int(os.environ.get("LLM_MAX_TOKENS", 1024)),
+            "temperature": float(os.environ.get("LLM_TEMPERATURE", 0.1))
         }
         
         try:
-            response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
+            response = requests.post(self.api_url, headers=headers, json=payload, timeout=int(os.environ.get("LLM_TIMEOUT_SECONDS", 60)))
             response.raise_for_status()
             result = response.json()
             
