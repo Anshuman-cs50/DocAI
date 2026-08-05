@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev
     paths:
       - "backend/**"
       - ".github/workflows/backend-deploy.yml"
@@ -13,14 +14,17 @@ on:
 
 jobs:
   deploy:
-    name: Trigger Render Deploy
+    name: Trigger Render Deploy (${{ github.ref == 'refs/heads/main' && 'Production' || 'Development' }})
     runs-on: ubuntu-latest
+    # Map the branch to the GitHub Actions Environment
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
 
     steps:
       - name: Trigger Render deploy hook
         # Render provides a deploy hook URL under:
         # Dashboard → Service → Settings → Deploy Hook
-        # Add it as a GitHub secret: RENDER_DEPLOY_HOOK_URL
+        # Add it as a GitHub environment secret: RENDER_DEPLOY_HOOK_URL
         run: |
           curl -s -o /dev/null -w "%{http_code}" \
             --request POST \
