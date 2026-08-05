@@ -1,0 +1,72 @@
+name: Backend CI — Lint & Test
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  lint-and-test:
+    name: Python Lint & Health Check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=__pycache__,.venv
+          # Warn on style issues (exit-zero = don't fail the build)
+          flake8 . --count --exit-zero --max-complexity=12 --max-line-length=120 --statistics --exclude=__pycache__,.venv
+
+      - name: Verify imports (smoke test)
+        env:
+          # Provide dummy values so module-level env reads don't fail during import
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+          HF_API_TOKEN: "dummy"
+          GRADIO_API_URL: "http://dummy"
+          SECRET_KEY: "ci-dummy-secret"
+          FLASK_DEBUG: "false"
+        run: |
+          python -c "
+          import sys
+          # Test that all modules can be imported without crashing
+          try:
+              from db import models, crud
+              from db.database import DB_URI
+              print('[OK] db package imports OK')
+          except Exception as e:
+              print(f'[FAIL] db import error: {e}')
+              sys.exit(1)
+
+          try:
+              from ai.LLM_module import ConsultationLLM, DataProcessingLLM
+              print('[OK] ai.LLM_module imports OK')
+          except Exception as e:
+              print(f'[FAIL] ai.LLM_module import error: {e}')
+              sys.exit(1)
+
+          print('[OK] All critical imports passed.')
+          "

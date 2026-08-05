@@ -1,5 +1,6 @@
 import traceback
 import json
+import os
 import numpy as np
 from sqlalchemy import func
 from db import crud, models
@@ -35,7 +36,7 @@ def run_end_of_session_pipeline(consultation_id: int):
             return
 
         # 1. Fetch unsummarized timeline entries
-        unsummarized = crud.get_unsummarized_timeline_entries(db, consultation_id, limit=50)
+        unsummarized = crud.get_unsummarized_timeline_entries(db, consultation_id, limit=int(os.environ.get("POST_PROCESSING_MAX_ENTRIES", 50)))
         print(f"[POST_PROCESSING] Found {len(unsummarized)} unsummarized entries.")
 
         if len(unsummarized) == 0:

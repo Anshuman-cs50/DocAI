@@ -1,6 +1,6 @@
 # app/routes.py
 import os
-from flask import Blueprint, jsonify, request, render_template
+from flask import Blueprint, jsonify, request
 from db.database import SessionLocal
 from db import crud, models
 from ai import ai, MemoryManager as mm, UserConditionManager as ucm
@@ -11,9 +11,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 main = Blueprint("main", __name__)
 
 
-@main.route("/", methods=["GET"])
-def home():
-    return render_template("index.html")
 
 @main.route("/health", methods=["GET"])
 def health_check():

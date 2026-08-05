@@ -4,13 +4,14 @@ from sqlalchemy import Date, func, literal, select, text, DateTime, union_all, l
 from pgvector.sqlalchemy import Vector
 from pgvector import Vector as PgVector
 import numpy as np
+import os
 from . import models
 from .models import VECTOR_DIMENSION
 
-SIMILARITY_THRESHOLD = 0.4
+SIMILARITY_THRESHOLD = float(os.environ.get("SIMILARITY_THRESHOLD", 0.4))
 # Safety ceiling — prevents token overflow on very large patient histories.
 # The real filter is the similarity threshold; this is just a hard backstop.
-MAX_FINAL_CONTEXT_CHUNKS = 15
+MAX_FINAL_CONTEXT_CHUNKS = int(os.environ.get("MAX_FINAL_CONTEXT_CHUNKS", 15))
 
 
 # -------------------- USER FUNCTIONS --------------------
@@ -387,8 +388,8 @@ def semantic_search_records(
     user_id: int, 
     query_embedding, # MUST be a 1D NumPy array/list
     current_consultation_id: int = None,
-    k_consultations: int = 20,
-    k_conditions: int = 20,
+    k_consultations: int = int(os.environ.get("SEMANTIC_SEARCH_K_CONSULTATIONS", 20)),
+    k_conditions: int = int(os.environ.get("SEMANTIC_SEARCH_K_CONDITIONS", 20)),
     SIMILARITY_THRESHOLD_VALUE: float = SIMILARITY_THRESHOLD,
     MAX_FINAL_CONTEXT_CHUNKS: int = MAX_FINAL_CONTEXT_CHUNKS
 ):

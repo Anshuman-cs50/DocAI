@@ -1,10 +1,11 @@
 # db/models.py
+import os
 from sqlalchemy import Column, Integer, Numeric, String, ForeignKey, Text, DateTime, Date, Boolean, func
 from sqlalchemy.orm import relationship
 from db.database import Base
 from pgvector.sqlalchemy import Vector
 
-VECTOR_DIMENSION = 768
+VECTOR_DIMENSION = int(os.environ.get("VECTOR_DIMENSION", 768))
 
 class User(Base):
     __tablename__ = "users"
