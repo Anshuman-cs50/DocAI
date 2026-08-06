@@ -16,3 +16,4 @@ python-dotenv
 gradio_client
 numpy
 requests
+flasgger

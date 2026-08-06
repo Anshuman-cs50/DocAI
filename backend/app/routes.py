@@ -14,17 +14,43 @@ main = Blueprint("main", __name__)
 
 @main.route("/health", methods=["GET"])
 def health_check():
+    """
+    Health Check Endpoint
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: API is running
+    """
     return jsonify({"status": "ok"})
 
 
 @main.route("/update_gradio_url", methods=["POST"])
 def update_gradio_url():
     """
-    Accepts a new Gradio URL from the Kaggle/Colab notebook and hot-reloads
-    the ConsultationLLM client — no Flask server restart needed.
-
-    Body: { "url": "https://...", "secret": "your-secret" }
-    The secret must match URL_UPDATE_SECRET in .env.
+    Update Gradio LLM Proxy URL
+    ---
+    tags:
+      - System
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            url:
+              type: string
+              example: https://new-gradio-url.live
+            secret:
+              type: string
+              example: your-secret
+    responses:
+      200:
+        description: URL updated successfully
+      401:
+        description: Unauthorized
     """
     expected_secret = os.getenv("URL_UPDATE_SECRET", "")
     if not expected_secret:
@@ -76,6 +102,44 @@ def _update_env_file(key: str, value: str):
 
 @main.route("/signup", methods=["POST"])
 def signup():
+    """
+    Register a new user
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+            password:
+              type: string
+            age:
+              type: integer
+            gender:
+              type: string
+            blood_type:
+              type: string
+            height_cm:
+              type: number
+            weight_kg:
+              type: number
+            pre_existing_conditions:
+              type: array
+              items:
+                type: string
+    responses:
+      200:
+        description: User created
+      400:
+        description: Bad request
+    """
     db = SessionLocal()
     data = request.get_json()
 
@@ -128,6 +192,28 @@ def signup():
 
 @main.route("/login", methods=["POST"])
 def login():
+    """
+    Log in a user
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            email:
+              type: string
+            password:
+              type: string
+    responses:
+      200:
+        description: Login successful
+      401:
+        description: Invalid credentials
+    """
     db = SessionLocal()
     data = request.get_json()
     
@@ -159,6 +245,26 @@ def login():
 
 @main.route("/create_consultation", methods=["POST"])
 def test_create_consultation():
+    """
+    Create a new consultation session
+    ---
+    tags:
+      - Consultation
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+            heading:
+              type: string
+    responses:
+      200:
+        description: Consultation created
+    """
     db = SessionLocal()
     data = request.get_json()
 
@@ -186,6 +292,20 @@ def test_create_consultation():
 
 @main.route("/get_consultation_history/<int:consultation_id>", methods=["GET"])
 def get_consultation_history(consultation_id):
+    """
+    Get history of a specific consultation
+    ---
+    tags:
+      - Consultation
+    parameters:
+      - name: consultation_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Consultation history retrieved
+    """
     db = SessionLocal()
 
     # basic validation
@@ -222,6 +342,28 @@ def get_consultation_history(consultation_id):
 
 @main.route("/consult", methods=["POST"])
 def consult():
+    """
+    Send a message to the AI Consultant
+    ---
+    tags:
+      - Consultation
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+            consultation_id:
+              type: integer
+            user_query:
+              type: string
+    responses:
+      200:
+        description: AI response generated
+    """
     db = SessionLocal()
     
     # initialise result and query variable
@@ -284,6 +426,24 @@ def consult():
 
 @main.route("/end_consultation", methods=["POST"])
 def end_consultation():
+    """
+    End a consultation and trigger background processing
+    ---
+    tags:
+      - Consultation
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            consultation_id:
+              type: integer
+    responses:
+      200:
+        description: Consultation ended successfully
+    """
     db = SessionLocal()
     data = request.get_json()
     consultation_id = data.get("consultation_id")
@@ -305,6 +465,24 @@ def end_consultation():
 
 @main.route("/get_user_profile_by_email", methods=["POST"])
 def get_user_profile_by_email():
+    """
+    Get user profile by email
+    ---
+    tags:
+      - User Profile
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            email:
+              type: string
+    responses:
+      200:
+        description: Profile retrieved
+    """
     db = SessionLocal()
     data = request.get_json()
     email = data.get("email")
@@ -321,6 +499,34 @@ def get_user_profile_by_email():
 
 @main.route("/update_profile", methods=["POST"])
 def update_profile():
+    """
+    Update a user's physical profile metadata
+    ---
+    tags:
+      - User Profile
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+            age:
+              type: integer
+            gender:
+              type: string
+            blood_type:
+              type: string
+            height_cm:
+              type: number
+            weight_kg:
+              type: number
+    responses:
+      200:
+        description: Profile updated
+    """
     db = SessionLocal()
     data = request.get_json()
     
@@ -361,6 +567,20 @@ def update_profile():
 
 @main.route("/get_user_profile/<int:user_id>", methods=["GET"])
 def get_user_profile(user_id):
+    """
+    Get user profile by user ID
+    ---
+    tags:
+      - User Profile
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Profile retrieved
+    """
     db = SessionLocal()
     user = crud.get_user_by_id(db, user_id=user_id)
     if not user:

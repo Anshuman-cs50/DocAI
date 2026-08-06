@@ -43,6 +43,33 @@ def create_app():
     # Enable CORS
     CORS(app)
 
+    # Initialize Swagger
+    from flasgger import Swagger
+    swagger_config = {
+        "headers": [],
+        "specs": [
+            {
+                "endpoint": 'apispec_1',
+                "route": '/apispec_1.json',
+                "rule_filter": lambda rule: True,  # all in
+                "model_filter": lambda tag: True,  # all in
+            }
+        ],
+        "static_url_path": "/flasgger_static",
+        "swagger_ui": True,
+        "specs_route": "/apidocs/"
+    }
+    
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "DocAI Backend API",
+            "description": "API endpoints for DocAI LLM integration and semantic search pipeline",
+            "version": "1.0.0"
+        }
+    }
+    Swagger(app, config=swagger_config, template=swagger_template)
+
     # Register blueprints
     from .routes import main
     app.register_blueprint(main)
