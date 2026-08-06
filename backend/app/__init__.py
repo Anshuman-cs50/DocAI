@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv, find_dotenv
 
 # Load .env before suppressing TF noise, so env vars are available immediately
@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", module='tf_keras')
 logging.getLogger("tensorflow").setLevel(logging.ERROR)
 
-from flask import Flask
+from flask import Flask, request, session, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 
@@ -30,6 +30,7 @@ def create_app():
     app = Flask(__name__)
 
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-insecure-fallback')
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 
     # Load configuration from database.py single source of truth
     from db.database import DB_URI
@@ -78,6 +79,39 @@ def create_app():
     @app.route("/health", methods=["GET"])
     def health():
         return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+    @app.before_request
+    def check_auth():
+        exempt_endpoints = [
+            'main.health_check',
+            'health',
+            'main.login',
+            'main.signup',
+            'flasgger.static',
+            'flasgger.apidocs',
+            'flasgger.apispec_1',
+            'static'
+        ]
+        
+        # If it's an exempt endpoint or preflight request (OPTIONS), allow it.
+        # CORS handles OPTIONS independently if we don't block it.
+        if request.method == "OPTIONS":
+            return None
+            
+        if request.endpoint in exempt_endpoints or request.endpoint is None:
+            return None
+
+        # 1. Check API Key
+        api_key = request.headers.get("x-api-key")
+        expected_api_key = os.environ.get("X_API_KEY")
+        if api_key and expected_api_key and api_key == expected_api_key:
+            return None
+            
+        # 2. Check Cookie/Session
+        if session.get("user_id"):
+            return None
+            
+        return jsonify({"error": "Unauthorized"}), 401
 
     return app
 

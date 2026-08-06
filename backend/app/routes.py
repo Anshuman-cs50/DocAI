@@ -1,6 +1,6 @@
 # app/routes.py
 import os
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 from db.database import SessionLocal
 from db import crud, models
 from ai import ai, MemoryManager as mm, UserConditionManager as ucm
@@ -236,11 +236,29 @@ def login():
         "name": user.name,
         "email": user.email
     }
+    
+    session["user_id"] = user.id
+    session.permanent = True
+    
     db.close()
     return jsonify({
         "message": "Login successful",
         "user": user_data
     })
+
+@main.route("/logout", methods=["POST"])
+def logout():
+    """
+    Log out a user
+    ---
+    tags:
+      - Authentication
+    responses:
+      200:
+        description: Logout successful
+    """
+    session.pop("user_id", None)
+    return jsonify({"message": "Logout successful"})
 
 
 @main.route("/create_consultation", methods=["POST"])
