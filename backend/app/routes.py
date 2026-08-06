@@ -278,7 +278,7 @@ def consult():
                     )
                     print(f"[OK] Timeline entry stored.")
                 except Exception as e:
-                    return jsonify({"error": f"error adding timeline to the database:\n {str(e)}"}), 500
+                    print(f"[ERROR] error adding timeline to the database: {e}")
         
         db.close()
 
