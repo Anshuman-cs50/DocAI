@@ -92,3 +92,4 @@ secrets.json
 
 backend/package-lock.json
 frontend/package-lock.json
+frontend/package.json
