@@ -67,7 +67,19 @@ def create_app():
             "title": "DocAI Backend API",
             "description": "API endpoints for DocAI LLM integration and semantic search pipeline",
             "version": "1.0.0"
-        }
+        },
+        "securityDefinitions": {
+            "APIKeyHeader": {
+                "type": "apiKey",
+                "name": "x-api-key",
+                "in": "header"
+            }
+        },
+        "security": [
+            {
+                "APIKeyHeader": []
+            }
+        ]
     }
     Swagger(app, config=swagger_config, template=swagger_template)
 
