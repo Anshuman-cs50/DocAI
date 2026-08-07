@@ -15,8 +15,8 @@ on:
 
 jobs:
   deploy:
-    # Only run the deploy if the CI actually succeeded (or if triggered manually)
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Only run the deploy if the CI actually succeeded, AND it was a push event (not a PR sync)
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
     name: Deploy to Render (${{ github.event.workflow_run.head_branch == 'main' && 'Production' || 'Development' }})
     runs-on: ubuntu-latest
     

@@ -15,6 +15,11 @@ jobs:
     name: Python Lint & Health Check
     runs-on: ubuntu-latest
 
+    # Cancel any in-progress runs for the same branch/PR to save actions minutes
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+
     services:
       postgres:
         image: ankane/pgvector:latest
