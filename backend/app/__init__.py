@@ -20,6 +20,7 @@ logging.getLogger("tensorflow").setLevel(logging.ERROR)
 from flask import Flask, request, session, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 
 from db.database import init_db  # Import your DB initializer
 
@@ -38,6 +39,7 @@ def create_app():
 
     # Initialize database
     db.init_app(app)
+    migrate = Migrate(app, db)
     with app.app_context():
         init_db()  # Ensure tables are created at startup
 

@@ -38,7 +38,6 @@ def init_db():
 
         # 2. Create all tables defined in models.py
         Base.metadata.create_all(bind=engine)
-        
         print("[OK] Database initialized and tables created (pgvector enabled).")
     except Exception as e:
         print(f"[ERROR] Error: Could not connect to PostgreSQL. Please ensure the database is running on localhost:5432.")
