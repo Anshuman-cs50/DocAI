@@ -11,7 +11,7 @@ DocAI is a sophisticated, privacy-focused medical consultation system. It replac
 * **Modern React Frontend:** Built with Vite and TailwindCSS for a responsive, dynamic user experience.
 
 ## 🏗️ Architecture Stack
-
+ 
 * **Frontend Framework:** React (Vite) + TailwindCSS
 * **Backend Framework:** Python / Flask
 * **Database:** PostgreSQL with `pgvector` extension
