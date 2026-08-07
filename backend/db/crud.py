@@ -87,10 +87,19 @@ def update_user_profile(
     return user
 
 def get_user_by_id(db: Session, user_id: int):
-    return db.query(models.User).filter(models.User.id == user_id).first()
+    return db.query(models.User).filter(models.User.id == user_id, models.User.is_active == True).first()
 
 def get_user_by_email(db: Session, email: str):
-    return db.query(models.User).filter(models.User.email == email).first()
+    return db.query(models.User).filter(models.User.email == email, models.User.is_active == True).first()
+
+def delete_user(db: Session, user_id: int):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user:
+        user.is_active = False
+        db.commit()
+        db.refresh(user)
+        return True
+    return False
 
 
 # -------------------- CONSULTATION FUNCTIONS --------------------

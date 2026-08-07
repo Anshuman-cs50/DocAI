@@ -20,6 +20,7 @@ class User(Base):
     height_cm = Column(Numeric(5, 2), nullable=True)
     weight_kg = Column(Numeric(5, 2), nullable=True)
     created_at = Column(DateTime, default=func.now()) # Use func.now() for database default
+    is_active = Column(Boolean, default=True, index=True)
 
     consultations = relationship("Consultation", back_populates="user", cascade="all, delete-orphan")
 
