@@ -12,3 +12,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('FLASK_PORT', 5000))
     # Disable the reloader to prevent the app from starting twice
     app.run(debug=debug, port=port, use_reloader=False)
+
