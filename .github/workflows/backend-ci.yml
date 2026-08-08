@@ -12,7 +12,7 @@ on:
 
 jobs:
   lint-and-test:
-    name: Python Lint & Health Check
+    name: Python Lint & Health Check (${{ github.ref_name }})
     runs-on: ubuntu-latest
 
     # Cancel any in-progress runs for the same branch/PR to save actions minutes
