@@ -1,0 +1,49 @@
+name: Backend CD — Deploy to Dev
+
+on:
+  workflow_run:
+    workflows: ["Backend CI — Lint & Test"]
+    types:
+      - completed
+    branches:
+      - dev  # Only triggers when CI ran on the dev branch
+
+  workflow_dispatch:
+
+jobs:
+  deploy-dev:
+    name: Deploy to Render (Development)
+    runs-on: ubuntu-latest
+
+    # Only deploy if CI succeeded on a push (not a PR sync), or if manually triggered
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
+
+    # Pulls RENDER_API_KEY and RENDER_SERVICE_ID from the 'development' GitHub Environment
+    environment: development
+
+    steps:
+      - name: Trigger Render Deployment (Dev)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "[ERROR] Missing RENDER_API_KEY or RENDER_SERVICE_ID in the 'development' GitHub Environment."
+            exit 1
+          fi
+
+          echo "Triggering Render deployment for DEV service: $RENDER_SERVICE_ID..."
+
+          RESPONSE=$(curl -s -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Accept: application/json")
+
+          DEPLOY_ID=$(echo "$RESPONSE" | jq -r '.id')
+
+          if [ "$DEPLOY_ID" == "null" ] || [ -z "$DEPLOY_ID" ]; then
+            echo "[ERROR] Failed to trigger deployment. API Response: $RESPONSE"
+            exit 1
+          fi
+
+          echo "[SUCCESS] Dev deployment triggered! Deploy ID: $DEPLOY_ID"
+          echo "Monitor progress at your Render Dashboard."
