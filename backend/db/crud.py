@@ -87,13 +87,13 @@ def update_user_profile(
     return user
 
 def get_user_by_id(db: Session, user_id: int):
-    return db.query(models.User).filter(models.User.id == user_id, models.User.is_active == True).first()
+    return db.query(models.User).filter(models.User.id == user_id, models.User.is_active.isnot(False)).first()
 
 def get_user_by_email(db: Session, email: str):
-    return db.query(models.User).filter(models.User.email == email, models.User.is_active == True).first()
+    return db.query(models.User).filter(models.User.email == email, models.User.is_active.isnot(False)).first()
 
 def delete_user(db: Session, user_id: int):
-    user = db.query(models.User).filter(models.User.id == user_id, models.User.is_active == True).first()
+    user = db.query(models.User).filter(models.User.id == user_id, models.User.is_active.isnot(False)).first()
     if user:
         user.is_active = False
         db.commit()
