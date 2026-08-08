@@ -29,32 +29,55 @@ jobs:
             exit 1
           fi
 
-          echo "Triggering Render deployment for DEV service: $RENDER_SERVICE_ID..."
+          echo "Triggering Render deployment for DEV service..."
 
-          RESPONSE=$(curl -s -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+          # Step 1: Fire the deploy trigger. We do NOT rely on this response body
+          # because Render may return empty on HTTP/2 connections from GitHub runners.
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
             -H "Authorization: Bearer $RENDER_API_KEY" \
-            -H "Accept: application/json")
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json")
 
-          DEPLOY_ID=$(echo "$RESPONSE" | jq -r '.id')
+          echo "Render API responded with HTTP $HTTP_STATUS"
 
-          if [ "$DEPLOY_ID" == "null" ] || [ -z "$DEPLOY_ID" ]; then
-            echo "[ERROR] Failed to trigger deployment. API Response: $RESPONSE"
+          if [ "$HTTP_STATUS" != "201" ] && [ "$HTTP_STATUS" != "200" ]; then
+            echo "[ERROR] Render API rejected the deploy trigger (HTTP $HTTP_STATUS)."
             exit 1
           fi
 
-          echo "[SUCCESS] Dev deployment triggered! Deploy ID: $DEPLOY_ID"
-          echo "Waiting for Render to finish deploying..."
+          echo "[SUCCESS] Deploy trigger accepted by Render."
+          echo "Waiting 10 seconds for the deploy to be registered..."
+          sleep 10
 
-          # Poll until Render finishes (live, failed, or canceled)
+          # Step 2: Fetch the latest deploy ID from the deploy list (independent of trigger response)
+          DEPLOYS_RESPONSE=$(curl -s -X GET \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys?limit=1" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Accept: application/json")
+
+          echo "Deploy list response: $DEPLOYS_RESPONSE"
+
+          DEPLOY_ID=$(echo "$DEPLOYS_RESPONSE" | jq -r '.[0].deploy.id // .[0].id // empty')
+
+          if [ -z "$DEPLOY_ID" ] || [ "$DEPLOY_ID" == "null" ]; then
+            echo "[ERROR] Could not retrieve latest deploy ID from Render. Response: $DEPLOYS_RESPONSE"
+            exit 1
+          fi
+
+          echo "Tracking deploy: $DEPLOY_ID"
+
+          # Step 3: Poll until Render finishes
           MAX_WAIT=1200  # 20 minutes timeout
           ELAPSED=0
 
           while [ $ELAPSED -lt $MAX_WAIT ]; do
-            STATUS_RESPONSE=$(curl -s -X GET "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys/$DEPLOY_ID" \
+            STATUS_RESPONSE=$(curl -s -X GET \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys/$DEPLOY_ID" \
               -H "Authorization: Bearer $RENDER_API_KEY" \
               -H "Accept: application/json")
 
-            STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.status')
+            STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.deploy.status // .status // empty')
 
             if [ "$STATUS" == "live" ]; then
               echo "[SUCCESS] Dev deployment is live on Render!"
@@ -69,5 +92,5 @@ jobs:
             ELAPSED=$((ELAPSED + 15))
           done
 
-          echo "[ERROR] Timed out after ${MAX_WAIT}s waiting for deployment to complete. Last status: $STATUS"
+          echo "[ERROR] Timed out after ${MAX_WAIT}s waiting for deployment. Last status: $STATUS"
           exit 1
