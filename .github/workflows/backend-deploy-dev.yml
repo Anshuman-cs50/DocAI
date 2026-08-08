@@ -18,17 +18,14 @@ jobs:
     # Only deploy if CI succeeded on a push (not a PR sync), or if manually triggered
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
 
-    # Pulls RENDER_API_KEY and RENDER_SERVICE_ID from the 'development' GitHub Environment
-    environment: development
-
     steps:
       - name: Trigger Render Deployment (Dev)
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID_DEV }}
         run: |
           if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
-            echo "[ERROR] Missing RENDER_API_KEY or RENDER_SERVICE_ID in the 'development' GitHub Environment."
+            echo "[ERROR] Missing RENDER_API_KEY or RENDER_SERVICE_ID_DEV repository secret."
             exit 1
           fi
 
@@ -46,4 +43,24 @@ jobs:
           fi
 
           echo "[SUCCESS] Dev deployment triggered! Deploy ID: $DEPLOY_ID"
-          echo "Monitor progress at your Render Dashboard."
+          echo "Waiting for Render to finish deploying..."
+
+          # Poll until Render finishes (live, failed, or canceled)
+          while true; do
+            STATUS_RESPONSE=$(curl -s -X GET "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys/$DEPLOY_ID" \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Accept: application/json")
+
+            STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.status')
+
+            if [ "$STATUS" == "live" ]; then
+              echo "[SUCCESS] Dev deployment is live on Render!"
+              exit 0
+            elif [ "$STATUS" == "build_failed" ] || [ "$STATUS" == "update_failed" ] || [ "$STATUS" == "canceled" ]; then
+              echo "[ERROR] Dev deployment failed with status: $STATUS"
+              exit 1
+            fi
+
+            echo "Current status: $STATUS. Checking again in 15 seconds..."
+            sleep 15
+          done
