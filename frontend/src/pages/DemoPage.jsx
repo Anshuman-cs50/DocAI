@@ -25,12 +25,14 @@ const TypewriterText = ({ text, delay = 18, onComplete }) => {
 
   useEffect(() => {
     index.current = 0;
-    setDisplayed("");
     
     if (!text) {
-      onComplete?.();
+      setTimeout(() => setDisplayed(""), 0);
+      if (onComplete) onComplete();
       return;
     }
+
+    setTimeout(() => setDisplayed(""), 0);
 
     const intervalId = setInterval(() => {
       if (index.current < text.length) {
@@ -38,11 +40,12 @@ const TypewriterText = ({ text, delay = 18, onComplete }) => {
         index.current += 1;
       } else {
         clearInterval(intervalId);
-        onComplete?.();
+        if (onComplete) onComplete();
       }
     }, delay);
 
     return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, delay]);
 
   return <span>{displayed}</span>;
@@ -63,7 +66,7 @@ export default function DemoPage() {
     if (!isPlaying) return;
     
     if (demoIndex >= DEMO_SEQUENCE.length) {
-      setIsPlaying(false);
+      setTimeout(() => setIsPlaying(false), 0);
       return;
     }
 

@@ -30,6 +30,7 @@ export default function AuthPage() {
           setBackendReady(false);
         }
       } catch (err) {
+        console.error("Backend health check failed:", err);
         setBackendReady(false);
       } finally {
         setCheckingBackend(false);
