@@ -249,9 +249,9 @@ export default function AuthPage() {
                   <button 
                     type="button" 
                     onClick={handleAddCondition}
-                    className="bg-medicalCyan text-white p-2 rounded-lg hover:bg-medicalCyan/90 transition-colors shrink-0"
+                    className="bg-medicalBlue text-white px-4 py-2 rounded-lg hover:bg-medicalBlue/90 transition-colors shrink-0 font-medium"
                   >
-                    <Plus size={20} />
+                    Add
                   </button>
                 </div>
 
