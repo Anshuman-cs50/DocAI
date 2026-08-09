@@ -308,7 +308,7 @@ def test_create_consultation():
     })
 
 
-@main.route("/get_consultation_history/<int:consultation_id>", methods=["GET"])
+@main.route("/get_consultation_history/<string:consultation_id>", methods=["GET"])
 def get_consultation_history(consultation_id):
     """
     Get history of a specific consultation
@@ -318,7 +318,7 @@ def get_consultation_history(consultation_id):
     parameters:
       - name: consultation_id
         in: path
-        type: integer
+        type: string
         required: true
     responses:
       200:
@@ -375,7 +375,7 @@ def consult():
             user_id:
               type: string
             consultation_id:
-              type: integer
+              type: string
             user_query:
               type: string
     responses:
@@ -457,7 +457,7 @@ def end_consultation():
           type: object
           properties:
             consultation_id:
-              type: integer
+              type: string
     responses:
       200:
         description: Consultation ended successfully
@@ -653,7 +653,8 @@ def _build_user_profile_response(db, user_id):
                 "id": cond.id,
                 "name": cond.condition_name,
                 "active": cond.is_active,
-                "type": cond.condition_type
+                "type": cond.condition_type,
+                "consultation_id": cond.consultation_id
             } for cond in conditions
         ],
         "vitals": {

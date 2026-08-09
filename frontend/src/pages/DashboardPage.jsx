@@ -52,13 +52,13 @@ export default function DashboardPage() {
     navigate('/');
   };
 
-  const handleNewConsultation = async (heading = "New Live Consultation") => {
+  const handleNewConsultation = async (heading = "New Live Consultation", reference = null) => {
     try {
       const res = await fetch(`${API_BASE_URL}/create_consultation`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, heading })
+        body: JSON.stringify({ user_id: user.id, heading, reference })
       });
       if (res.ok) {
         const data = await res.json();
@@ -72,8 +72,16 @@ export default function DashboardPage() {
     }
   };
 
-  const handleResolveCondition = (conditionName) => {
-    handleNewConsultation(`Resolution Assessment: ${conditionName}`);
+  const handleResolveCondition = (condition) => {
+    const heading = `Resolution Assessment: ${condition.name}`;
+    const existing = profileData?.consultations?.find(
+      c => c.title === heading && c.is_active
+    );
+    if (existing) {
+      navigate(`/consultation/${existing.id}`);
+    } else {
+      handleNewConsultation(heading, condition.consultation_id);
+    }
   };
 
   const handleEndConsultation = async (e, consultId) => {
@@ -216,7 +224,7 @@ export default function DashboardPage() {
                       <span className="w-2.5 h-2.5 rounded-full bg-successGreen shadow-[0_0_8px_rgba(22,163,74,0.5)] mt-1.5"></span>
                     </div>
                     <button 
-                      onClick={() => handleResolveCondition(c.name)}
+                      onClick={() => handleResolveCondition(c)}
                       className="mt-1 w-full py-1.5 px-3 bg-medicalCyan/20 hover:bg-medicalCyan/40 text-medicalBlue text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1 border border-medicalCyan/50"
                     >
                       <CheckCircle size={14} /> Assess Resolution
