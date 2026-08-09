@@ -276,7 +276,7 @@ def test_create_consultation():
           type: object
           properties:
             user_id:
-              type: integer
+              type: string
             heading:
               type: string
     responses:
@@ -373,7 +373,7 @@ def consult():
           type: object
           properties:
             user_id:
-              type: integer
+              type: string
             consultation_id:
               type: integer
             user_query:
@@ -530,7 +530,7 @@ def update_profile():
           type: object
           properties:
             user_id:
-              type: integer
+              type: string
             age:
               type: integer
             gender:
@@ -583,7 +583,7 @@ def update_profile():
         
     return jsonify({"message": "Profile updated successfully"})
 
-@main.route("/get_user_profile/<int:user_id>", methods=["GET"])
+@main.route("/get_user_profile/<string:user_id>", methods=["GET"])
 def get_user_profile(user_id):
     """
     Get user profile by user ID
@@ -593,7 +593,7 @@ def get_user_profile(user_id):
     parameters:
       - name: user_id
         in: path
-        type: integer
+        type: string
         required: true
     responses:
       200:

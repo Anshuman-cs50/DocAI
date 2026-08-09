@@ -60,7 +60,7 @@ def create_user(
 
 def update_user_profile(
     db: Session, 
-    user_id: int, 
+    user_id: str, 
     age: int = None, 
     gender: str = None,
     blood_type: str = None,
@@ -86,13 +86,13 @@ def update_user_profile(
     db.refresh(user)
     return user
 
-def get_user_by_id(db: Session, user_id: int):
+def get_user_by_id(db: Session, user_id: str):
     return db.query(models.User).filter(models.User.id == user_id, models.User.is_active.isnot(False)).first()
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email, models.User.is_active.isnot(False)).first()
 
-def delete_user(db: Session, user_id: int):
+def delete_user(db: Session, user_id: str):
     user = db.query(models.User).filter(models.User.id == user_id, models.User.is_active.isnot(False)).first()
     if user:
         user.is_active = False
@@ -104,7 +104,7 @@ def delete_user(db: Session, user_id: int):
 
 # -------------------- CONSULTATION FUNCTIONS --------------------
 
-def resolve_user_condition(db: Session, user_id: int, condition_name: str):
+def resolve_user_condition(db: Session, user_id: str, condition_name: str):
     condition = db.query(models.UserCondition).filter(
         models.UserCondition.user_id == user_id,
         models.UserCondition.condition_name == condition_name,
@@ -118,7 +118,7 @@ def resolve_user_condition(db: Session, user_id: int, condition_name: str):
         return True
     return False
 
-def create_consultation(db: Session, user_id: int, heading: str, reference: int = None):
+def create_consultation(db: Session, user_id: str, heading: str, reference: int = None):
     # Ensure reference is int as per FK, not str as in old function signature 
     consultation = models.Consultation(user_id=user_id, heading=heading, reference=reference)
     db.add(consultation)
@@ -126,7 +126,7 @@ def create_consultation(db: Session, user_id: int, heading: str, reference: int 
     db.refresh(consultation)
     return consultation
 
-def get_recent_consultations(db: Session, user_id: int, limit: int = 5):
+def get_recent_consultations(db: Session, user_id: str, limit: int = 5):
     return (db.query(models.Consultation)
               .filter(models.Consultation.user_id == user_id)
               .order_by(models.Consultation.updated_at.desc())
@@ -248,7 +248,7 @@ def get_timeline_entries_since(db: Session, consultation_id: int, since: DateTim
 
 def add_user_condition(
     db: Session,
-    user_id: int,
+    user_id: str,
     condition_name: str,
     condition_type: str,
     source_type: str,
@@ -316,7 +316,7 @@ def delete_user_condition(db: Session, condition_id: int):
 
 def add_vitals_entry(
     db: Session,
-    user_id: int,
+    user_id: str,
     metric_name: str,
     metric_value: float,
     timestamp: DateTime = None,
@@ -341,7 +341,7 @@ def add_vitals_entry(
 
 def get_vitals_by_range(
     db: Session,
-    user_id: int,
+    user_id: str,
     metric_name: str,
     start_time: DateTime,
     end_time: DateTime,
@@ -358,7 +358,7 @@ def get_vitals_by_range(
             .all())
 
 
-def get_latest_vitals(db: Session, user_id: int):
+def get_latest_vitals(db: Session, user_id: str):
     """Retrieves the single latest reading for *each* metric for a user."""
     # This query uses an advanced window function or GROUP BY in pure SQL for efficiency
     # For simplicity and cross-DB compatibility in SQLAlchemy, we'll use a subquery/filtering approach:
@@ -394,7 +394,7 @@ def get_latest_vitals(db: Session, user_id: int):
 
 def semantic_search_records(
     db: Session, 
-    user_id: int, 
+    user_id: str, 
     query_embedding, # MUST be a 1D NumPy array/list
     current_consultation_id: int = None,
     k_consultations: int = int(os.environ.get("SEMANTIC_SEARCH_K_CONSULTATIONS", 20)),
