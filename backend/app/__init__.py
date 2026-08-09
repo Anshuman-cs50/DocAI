@@ -45,8 +45,9 @@ def create_app():
     with app.app_context():
         init_db()  # Ensure tables are created at startup
 
-    # Enable CORS
-    CORS(app, supports_credentials=True)
+    # Enable CORS with restricted origins for security
+    allowed_origins = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5173').split(',')
+    CORS(app, supports_credentials=True, origins=allowed_origins)
 
     # Initialize Swagger
     from flasgger import Swagger
