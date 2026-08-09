@@ -122,7 +122,7 @@ export default function AuthPage() {
 
   const inputClass = "w-full p-3 rounded-lg border border-slateBlue bg-background text-textMain focus:outline-none focus:border-medicalBlue focus:ring-1 focus:ring-medicalBlue transition-shadow";
   const labelClass = "block text-sm font-medium text-textMain mb-1";
-
+ 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden">
       <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-medicalCyan/40 rounded-full blur-[120px] pointer-events-none"></div>
