@@ -676,7 +676,11 @@ def get_consultations(user_id):
     """
     db = SessionLocal()
     
-    page = int(request.args.get('page', 1))
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        limit = max(1, min(100, int(request.args.get('limit', 10))))
+    except ValueError:
+        return jsonify({"error": "Invalid page or limit query parameter"}), 400
     limit = int(request.args.get('limit', 10))
     offset = (page - 1) * limit
     
@@ -701,4 +705,4 @@ def get_consultations(user_id):
     }
     
     db.close()
-    return jsonify(response_data)
+    return jsonify(response_data)
