@@ -15,6 +15,8 @@ export default function DashboardPage() {
   const [hasMoreConsultations, setHasMoreConsultations] = useState(false);
   const [loadingConsultations, setLoadingConsultations] = useState(false);
   
+  const [showEndedConsultations, setShowEndedConsultations] = useState(true);
+  
   // Edit Profile Modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ age: '', gender: '', height: '', weight: '', bloodType: '' });
@@ -309,18 +311,31 @@ export default function DashboardPage() {
               </h2>
               <p className="text-textMuted text-sm mt-1">Review past visits or start a new encounter.</p>
             </div>
-            <button 
-              onClick={() => handleNewConsultation()}
-              className="px-5 py-2.5 bg-medicalBlue hover:bg-medicalBlue/90 text-white font-semibold rounded-lg shadow-md transition-transform hover:scale-105 flex items-center gap-2"
-            >
-              <Plus size={18} /> New Consultation
-            </button>
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-textMuted cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={showEndedConsultations} 
+                  onChange={(e) => setShowEndedConsultations(e.target.checked)}
+                  className="rounded text-medicalBlue focus:ring-medicalBlue"
+                />
+                Show Ended
+              </label>
+              <button 
+                onClick={() => handleNewConsultation()}
+                className="px-5 py-2.5 bg-medicalBlue hover:bg-medicalBlue/90 text-white font-semibold rounded-lg shadow-md transition-transform hover:scale-105 flex items-center gap-2"
+              >
+                <Plus size={18} /> New Consultation
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4">
             {consultations?.length > 0 ? (
               <>
-                {consultations.map(c => (
+                {consultations
+                  .filter(c => showEndedConsultations || c.is_active !== false)
+                  .map(c => (
                   <div key={c.id} className={`bg-white rounded-2xl shadow-sm border p-5 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center transition-all ${c.is_active !== false ? 'border-medicalTeal/50 hover:shadow-md' : 'border-slateBlue/30 opacity-70'}`}>
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-1">
