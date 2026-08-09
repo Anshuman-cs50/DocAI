@@ -15,7 +15,7 @@ export default function DashboardPage() {
   const [hasMoreConsultations, setHasMoreConsultations] = useState(false);
   const [loadingConsultations, setLoadingConsultations] = useState(false);
   
-  const [showEndedConsultations, setShowEndedConsultations] = useState(true);
+  const [showEndedConsultations, setShowEndedConsultations] = useState(false);
   
   // Edit Profile Modal state
   const [showEditModal, setShowEditModal] = useState(false);
