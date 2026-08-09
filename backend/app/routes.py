@@ -611,17 +611,7 @@ def get_user_profile(user_id):
 def _build_user_profile_response(db, user_id):
     user = crud.get_user_by_id(db, user_id=user_id)
     
-    # Get consultations
-    recent_consults = crud.get_recent_consultations(db, user_id=user_id, limit=20)
-    
-    valid_consults = []
-    for c in recent_consults:
-        # Filter out inactive consultations that have 0 timeline entries
-        if not c.is_active:
-            count = db.query(models.ConsultationTimeline).filter_by(consultation_id=c.id).count()
-            if count == 0:
-                continue
-        valid_consults.append(c)
+    # Consultations are now decoupled from the profile payload
     
     # Get conditions
     # We query directly or use the relationship
@@ -639,16 +629,7 @@ def _build_user_profile_response(db, user_id):
         "blood_type": user.blood_type,
         "height_cm": float(user.height_cm) if user.height_cm else None,
         "weight_kg": float(user.weight_kg) if user.weight_kg else None,
-        "consultations": [
-            {
-                "id": c.id,
-                "date": c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else "",
-                "title": c.heading,
-                "summary": c.summary,
-                "is_active": c.is_active
-            }
-            for c in valid_consults
-        ],
+
         "conditions": [
             {
                 "id": cond.id,
@@ -662,6 +643,74 @@ def _build_user_profile_response(db, user_id):
             # Since get_latest_vitals returns a list of VitalsTimeSeries objects
             v.metric_name: v.metric_value for v in vitals
         } if vitals else {}
+    }
+    
+    db.close()
+    return jsonify(response_data)
+
+@main.route("/get_consultations/<string:user_id>", methods=["GET"])
+def get_consultations(user_id):
+    """
+    Get paginated consultation history for a user
+    ---
+    tags:
+      - Consultation
+    parameters:
+      - name: user_id
+        in: path
+        type: string
+        required: true
+      - name: page
+        in: query
+        type: integer
+        required: false
+        default: 1
+      - name: limit
+        in: query
+        type: integer
+        required: false
+        default: 10
+    responses:
+      200:
+        description: Consultations retrieved
+    """
+    db = SessionLocal()
+    
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 10))
+    offset = (page - 1) * limit
+    
+    # We fetch a larger chunk to account for filtered out empty consultations
+    raw_consultations = crud.get_consultations(db, user_id=user_id, limit=limit*2, offset=offset)
+    
+    valid_consults = []
+    for c in raw_consultations:
+        # Filter out inactive consultations that have 0 timeline entries
+        if not c.is_active:
+            count = db.query(models.ConsultationTimeline).filter_by(consultation_id=c.id).count()
+            if count == 0:
+                continue
+        valid_consults.append(c)
+        if len(valid_consults) == limit:
+            break
+            
+    total_count = crud.get_consultations_count(db, user_id=user_id)
+    has_more = (offset + limit) < total_count
+    
+    response_data = {
+        "consultations": [
+            {
+                "id": c.id,
+                "date": c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else "",
+                "title": c.heading,
+                "summary": c.summary,
+                "is_active": c.is_active
+            }
+            for c in valid_consults
+        ],
+        "total": total_count,
+        "page": page,
+        "has_more": has_more
     }
     
     db.close()

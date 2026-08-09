@@ -133,6 +133,17 @@ def get_recent_consultations(db: Session, user_id: str, limit: int = 5):
               .limit(limit)
               .all())
 
+def get_consultations(db: Session, user_id: str, limit: int = 10, offset: int = 0):
+    return (db.query(models.Consultation)
+              .filter(models.Consultation.user_id == user_id)
+              .order_by(models.Consultation.updated_at.desc())
+              .offset(offset)
+              .limit(limit)
+              .all())
+
+def get_consultations_count(db: Session, user_id: str):
+    return db.query(models.Consultation).filter(models.Consultation.user_id == user_id).count()
+
 def get_consultation_by_id(db: Session, consultation_id: str):
     return db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
 

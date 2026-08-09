@@ -10,6 +10,11 @@ export default function DashboardPage() {
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
   
+  const [consultations, setConsultations] = useState([]);
+  const [consultationsPage, setConsultationsPage] = useState(1);
+  const [hasMoreConsultations, setHasMoreConsultations] = useState(false);
+  const [loadingConsultations, setLoadingConsultations] = useState(false);
+  
   // Edit Profile Modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ age: '', gender: '', height: '', weight: '', bloodType: '' });
@@ -24,7 +29,31 @@ export default function DashboardPage() {
     const parsedUser = JSON.parse(savedUser);
     setUser(parsedUser);
     fetchProfile(parsedUser.id);
+    fetchConsultations(parsedUser.id, 1);
   }, [navigate]);
+
+  const fetchConsultations = async (userId, page = 1) => {
+    setLoadingConsultations(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/get_consultations/${userId}?page=${page}&limit=10`, {
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (page === 1) {
+          setConsultations(data.consultations);
+        } else {
+          setConsultations(prev => [...prev, ...data.consultations]);
+        }
+        setConsultationsPage(data.page);
+        setHasMoreConsultations(data.has_more);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingConsultations(false);
+    }
+  };
 
   const fetchProfile = async (userId) => {
     try {
@@ -82,7 +111,7 @@ export default function DashboardPage() {
 
   const handleResolveCondition = (condition) => {
     const heading = `Resolution Assessment: ${condition.name}`;
-    const existing = profileData?.consultations?.find(
+    const existing = consultations?.find(
       c => c.title === heading && c.is_active
     );
     if (existing) {
@@ -104,6 +133,7 @@ export default function DashboardPage() {
       });
       if (res.ok) {
         fetchProfile(user.id);
+        fetchConsultations(user.id, 1);
       }
     } catch (err) {
       console.error(err);
@@ -288,42 +318,53 @@ export default function DashboardPage() {
           </div>
 
           <div className="space-y-4">
-            {profileData?.consultations?.length > 0 ? (
-              profileData.consultations.map(c => (
-                <div key={c.id} className={`bg-white rounded-2xl shadow-sm border p-5 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center transition-all ${c.is_active !== false ? 'border-medicalTeal/50 hover:shadow-md' : 'border-slateBlue/30 opacity-70'}`}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="font-bold text-textMain text-lg">{c.title || `Consultation #${c.id}`}</h3>
-                      {c.is_active !== false ? (
-                        <span className="px-2 py-0.5 bg-medicalCyan text-medicalBlue text-[10px] font-bold uppercase rounded-full border border-medicalTeal/20">Active</span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-slateBlue/20 text-textMuted text-[10px] font-bold uppercase rounded-full">Ended</span>
+            {consultations?.length > 0 ? (
+              <>
+                {consultations.map(c => (
+                  <div key={c.id} className={`bg-white rounded-2xl shadow-sm border p-5 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center transition-all ${c.is_active !== false ? 'border-medicalTeal/50 hover:shadow-md' : 'border-slateBlue/30 opacity-70'}`}>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="font-bold text-textMain text-lg">{c.title || `Consultation #${c.id}`}</h3>
+                        {c.is_active !== false ? (
+                          <span className="px-2 py-0.5 bg-medicalCyan text-medicalBlue text-[10px] font-bold uppercase rounded-full border border-medicalTeal/20">Active</span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-slateBlue/20 text-textMuted text-[10px] font-bold uppercase rounded-full">Ended</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-textMuted mb-2">
+                        <Clock size={12} /> {c.date || "Unknown date"}
+                      </div>
+                      <p className={`text-sm text-textMuted ${c.is_active !== false ? 'line-clamp-2' : ''}`}>{c.summary || "No summary available."}</p>
+                    </div>
+                    
+                    <div className="flex gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
+                      {c.is_active !== false && (
+                        <button 
+                          onClick={(e) => handleEndConsultation(e, c.id)}
+                          className="px-4 py-2 border border-alertRed text-alertRed hover:bg-alertRed/10 font-medium rounded-lg transition-colors flex-1 sm:flex-none text-center text-sm"
+                        >
+                          End
+                        </button>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-textMuted mb-2">
-                      <Clock size={12} /> {c.date || "Unknown date"}
-                    </div>
-                    <p className={`text-sm text-textMuted ${c.is_active !== false ? 'line-clamp-2' : ''}`}>{c.summary || "No summary available."}</p>
-                  </div>
-                  
-                  <div className="flex gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
-                    {c.is_active !== false && (
                       <button 
-                        onClick={(e) => handleEndConsultation(e, c.id)}
-                        className="px-4 py-2 border border-alertRed text-alertRed hover:bg-alertRed/10 font-medium rounded-lg transition-colors flex-1 sm:flex-none text-center text-sm"
+                        onClick={() => navigate(`/consultation/${c.id}`)}
+                        className="px-4 py-2 bg-accent hover:bg-accentHover text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 flex-1 sm:flex-none text-sm"
                       >
-                        End
+                        {c.is_active !== false ? "Continue" : "View Record"} <ChevronRight size={16} />
                       </button>
-                    )}
-                    <button 
-                      onClick={() => navigate(`/consultation/${c.id}`)}
-                      className="px-4 py-2 bg-accent hover:bg-accentHover text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 flex-1 sm:flex-none text-sm"
-                    >
-                      {c.is_active !== false ? "Continue" : "View Record"} <ChevronRight size={16} />
-                    </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+                {hasMoreConsultations && (
+                  <button 
+                    onClick={() => fetchConsultations(user.id, consultationsPage + 1)}
+                    disabled={loadingConsultations}
+                    className="w-full mt-4 py-2 bg-slateBlue/10 hover:bg-slateBlue/20 text-medicalBlue text-sm font-semibold rounded-lg transition-colors"
+                  >
+                    {loadingConsultations ? "Loading..." : "Load More"}
+                  </button>
+                )}
+              </>
             ) : (
               <div className="bg-white border border-slateBlue/30 border-dashed rounded-2xl p-12 text-center flex flex-col items-center">
                 <History className="text-slateBlue mb-3 opacity-50" size={32} />
