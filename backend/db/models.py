@@ -1,5 +1,6 @@
 # db/models.py
 import os
+import uuid
 from sqlalchemy import Column, Integer, Numeric, String, ForeignKey, Text, DateTime, Date, Boolean, func
 from sqlalchemy.orm import relationship
 from db.database import Base
@@ -10,7 +11,7 @@ VECTOR_DIMENSION = int(os.environ.get("VECTOR_DIMENSION", 768))
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
     name = Column(String(100), nullable=False)
     email = Column(String(120), unique=True, index=True)
     password_hash = Column(String(255), nullable=True) # Temporarily nullable for backwards compatibility
@@ -31,7 +32,7 @@ class Consultation(Base):
     __tablename__ = "consultations"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(String(36), ForeignKey("users.id"))
     heading = Column(String(255), default="") 
     reference = Column(Integer, ForeignKey("consultations.id"), nullable=True)
     summary = Column(Text, default="")
@@ -71,7 +72,7 @@ class UserCondition(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Core Link to User
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), index=True)
     
     # Source Separation
     source_type = Column(String(50), nullable=False)
@@ -103,7 +104,7 @@ class VitalsTimeSeries(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Core Link to User
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), index=True)
     
     # The essential time component for TimescaleDB optimization and time-series queries
     timestamp = Column(DateTime, default=func.now(), index=True)
