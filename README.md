@@ -4,6 +4,7 @@ DocAI is a sophisticated, privacy-focused medical consultation system. It replac
 
 ## 🚀 Key Features
 
+
 * **Autonomous ReAct LLM Agent:** The core consultation loop is agentic. The AI evaluates the conversation natively and decides whether to `[SEARCH]` the patient's medical history for context, or `[ANSWER]` the user directly, minimizing hallucinations.
 * **Semantic Health Record Search:** Integrates **pgvector** and a locally hosted **BioBERT** embedding model to perform high-speed, semantic similarity searches across a user's consultation summaries and clinical notes.
 * **Event-Driven Memory Pipeline:** Automates background insight extraction, summarization, and active condition detection asynchronously when a consultation ends, keeping the UI blazing fast.

@@ -28,7 +28,7 @@ export default function DashboardPage() {
 
   const fetchProfile = async (userId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/get_user_profile/${userId}`);
+      const res = await fetch(`${API_BASE_URL}/get_user_profile/${userId}`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setProfileData(data);
@@ -56,6 +56,7 @@ export default function DashboardPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/create_consultation`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: user.id, heading })
       });
@@ -81,6 +82,7 @@ export default function DashboardPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/end_consultation`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ consultation_id: consultId })
       });
@@ -107,6 +109,7 @@ export default function DashboardPage() {
       
       const res = await fetch(`${API_BASE_URL}/update_profile`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });

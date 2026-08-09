@@ -32,6 +32,8 @@ def create_app():
 
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-insecure-fallback')
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+    app.config['SESSION_COOKIE_SECURE'] = True
 
     # Load configuration from database.py single source of truth
     from db.database import DB_URI
@@ -43,8 +45,9 @@ def create_app():
     with app.app_context():
         init_db()  # Ensure tables are created at startup
 
-    # Enable CORS
-    CORS(app)
+    # Enable CORS with restricted origins for security
+    allowed_origins = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5173').split(',')
+    CORS(app, supports_credentials=True, origins=allowed_origins)
 
     # Initialize Swagger
     from flasgger import Swagger
@@ -128,4 +131,5 @@ def create_app():
         return jsonify({"error": "Unauthorized"}), 401
 
     return app
+
 

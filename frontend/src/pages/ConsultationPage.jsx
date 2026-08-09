@@ -10,12 +10,14 @@ const TypewriterText = ({ text, delay = 18, onComplete }) => {
 
   useEffect(() => {
     index.current = 0;
-    setDisplayed("");
     
     if (!text) {
-      onComplete?.();
+      setTimeout(() => setDisplayed(""), 0);
+      if (onComplete) onComplete();
       return;
     }
+
+    setTimeout(() => setDisplayed(""), 0);
 
     const intervalId = setInterval(() => {
       if (index.current < text.length) {
@@ -23,11 +25,12 @@ const TypewriterText = ({ text, delay = 18, onComplete }) => {
         index.current += 1;
       } else {
         clearInterval(intervalId);
-        onComplete?.();
+        if (onComplete) onComplete();
       }
     }, delay);
 
     return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, delay]);
 
   return <span>{displayed}</span>;
@@ -112,7 +115,7 @@ export default function ConsultationPage() {
   const fetchHistory = async () => {
     try {
       setStatus("Loading history...");
-      const res = await fetch(`${API_BASE_URL}/get_consultation_history/${id}`);
+      const res = await fetch(`${API_BASE_URL}/get_consultation_history/${id}`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setConsultationInfo(data.consultation);
@@ -140,7 +143,7 @@ export default function ConsultationPage() {
         
         // Fetch profile to verify if active
         const savedUser = JSON.parse(localStorage.getItem('docai_user'));
-        const profRes = await fetch(`${API_BASE_URL}/get_user_profile/${savedUser.id}`);
+        const profRes = await fetch(`${API_BASE_URL}/get_user_profile/${savedUser.id}`, { credentials: 'include' });
         if (profRes.ok) {
            const profData = await profRes.json();
            const thisConsult = profData.consultations.find(c => c.id == id);
@@ -181,6 +184,7 @@ export default function ConsultationPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/consult`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user.id,
