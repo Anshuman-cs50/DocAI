@@ -96,6 +96,7 @@ export default function AuthPage() {
 
       const res = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
