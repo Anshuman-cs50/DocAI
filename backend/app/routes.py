@@ -680,20 +680,7 @@ def get_consultations(user_id):
     limit = int(request.args.get('limit', 10))
     offset = (page - 1) * limit
     
-    # We fetch a larger chunk to account for filtered out empty consultations
-    raw_consultations = crud.get_consultations(db, user_id=user_id, limit=limit*2, offset=offset)
-    
-    valid_consults = []
-    for c in raw_consultations:
-        # Filter out inactive consultations that have 0 timeline entries
-        if not c.is_active:
-            count = db.query(models.ConsultationTimeline).filter_by(consultation_id=c.id).count()
-            if count == 0:
-                continue
-        valid_consults.append(c)
-        if len(valid_consults) == limit:
-            break
-            
+    valid_consults = crud.get_consultations(db, user_id=user_id, limit=limit, offset=offset)
     total_count = crud.get_consultations_count(db, user_id=user_id)
     has_more = (offset + limit) < total_count
     
