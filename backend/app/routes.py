@@ -343,7 +343,8 @@ def get_consultation_history(consultation_id):
         "consultation": {
             "id": consultation.id,
             "heading": consultation.heading,
-            "summary": consultation.summary
+            "summary": consultation.summary,
+            "is_active": consultation.is_active
         },
         "timeline": [
             {

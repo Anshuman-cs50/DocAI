@@ -141,20 +141,11 @@ export default function ConsultationPage() {
         
         setMessages(mappedMessages);
         
-        // Fetch profile to verify if active
-        const savedUser = JSON.parse(localStorage.getItem('docai_user'));
-        const profRes = await fetch(`${API_BASE_URL}/get_user_profile/${savedUser.id}`, { credentials: 'include' });
-        if (profRes.ok) {
-           const profData = await profRes.json();
-           const thisConsult = profData.consultations.find(c => c.id == id);
-           if (thisConsult && thisConsult.is_active === false) {
-             setIsActive(false);
-             setStatus("Session Ended");
-           } else {
-             setStatus("Awaiting Input");
-           }
+        if (data.consultation.is_active === false) {
+          setIsActive(false);
+          setStatus("Session Ended");
         } else {
-           setStatus("Awaiting Input");
+          setStatus("Awaiting Input");
         }
       } else {
         alert("Consultation not found");
