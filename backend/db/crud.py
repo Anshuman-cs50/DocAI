@@ -133,10 +133,21 @@ def get_recent_consultations(db: Session, user_id: str, limit: int = 5):
               .limit(limit)
               .all())
 
-def get_consultation_by_id(db: Session, consultation_id: int):
+def get_consultations(db: Session, user_id: str, limit: int = 10, offset: int = 0):
+    return (db.query(models.Consultation)
+              .filter(models.Consultation.user_id == user_id)
+              .order_by(models.Consultation.updated_at.desc())
+              .offset(offset)
+              .limit(limit)
+              .all())
+
+def get_consultations_count(db: Session, user_id: str):
+    return db.query(models.Consultation).filter(models.Consultation.user_id == user_id).count()
+
+def get_consultation_by_id(db: Session, consultation_id: str):
     return db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
 
-def end_consultation(db: Session, consultation_id: int):
+def end_consultation(db: Session, consultation_id: str):
     consultation = db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
     if consultation:
         consultation.is_active = False
@@ -145,7 +156,7 @@ def end_consultation(db: Session, consultation_id: int):
     return consultation
 
 
-def get_unsummarized_timeline_entries(db: Session, consultation_id: int, limit: int = 50):
+def get_unsummarized_timeline_entries(db: Session, consultation_id: str, limit: int = 50):
     """
     Retrieves timeline entries for a consultation that have not been summarized yet.
     """
@@ -162,7 +173,7 @@ def get_unsummarized_timeline_entries(db: Session, consultation_id: int, limit: 
 
 def update_consultation_summary_and_embedding(
     db: Session,
-    consultation_id: int,
+    consultation_id: str,
     new_summary: str,
     new_embedding_vector: Optional[List[float]]
 ) -> None:
@@ -184,13 +195,13 @@ def update_consultation_summary_and_embedding(
         db.refresh(consultation)
 
 
-def get_last_condition_check_time(db: Session, consultation_id: int):
+def get_last_condition_check_time(db: Session, consultation_id: str):
     consultation = db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
     if consultation:
         return consultation.last_condition_check_at
     return None
 
-def update_last_condition_check_time(db: Session, consultation_id: int):
+def update_last_condition_check_time(db: Session, consultation_id: str):
     consultation = db.query(models.Consultation).filter(models.Consultation.id == consultation_id).first()
     if consultation:
         consultation.last_condition_check_at = func.now()
@@ -200,7 +211,7 @@ def update_last_condition_check_time(db: Session, consultation_id: int):
 
 # -------------------- TIMELINE FUNCTIONS --------------------
 
-def add_timeline_entry(db: Session, consultation_id: int, user_query: str, model_response: str, insights: str = None, embedding_vector=None):
+def add_timeline_entry(db: Session, consultation_id: str, user_query: str, model_response: str, insights: str = None, embedding_vector=None):
     # 🛠 MODIFIED: Changed argument name 'embedding' to 'embedding_vector'
     # Convert NumPy array to list for pgvector compatibility
     if embedding_vector is not None:
@@ -219,7 +230,7 @@ def add_timeline_entry(db: Session, consultation_id: int, user_query: str, model
     db.refresh(entry)
     return entry
 
-def get_recent_timeline_entries(db: Session, consultation_id: int, limit: int = 5):
+def get_recent_timeline_entries(db: Session, consultation_id: str, limit: int = 5):
     entries = (db.query(models.ConsultationTimeline)
               .filter(models.ConsultationTimeline.consultation_id == consultation_id)
               .order_by(models.ConsultationTimeline.created_at.desc())  # get latest first
@@ -227,13 +238,13 @@ def get_recent_timeline_entries(db: Session, consultation_id: int, limit: int = 
               .all())
     return entries[::-1]  # reverse to restore chronological order (oldest to newest)
 
-def get_all_timeline_entries(db: Session, consultation_id: int):
+def get_all_timeline_entries(db: Session, consultation_id: str):
     return (db.query(models.ConsultationTimeline)
               .filter(models.ConsultationTimeline.consultation_id == consultation_id)
               .order_by(models.ConsultationTimeline.created_at.asc())   # from oldest to latest
               .all())
 
-def get_timeline_entries_since(db: Session, consultation_id: int, since: DateTime):
+def get_timeline_entries_since(db: Session, consultation_id: str, since: DateTime):
     """Retrieves timeline entries for a consultation created after a specific timestamp."""
     return (db.query(models.ConsultationTimeline)
             .filter(
@@ -256,7 +267,7 @@ def add_user_condition(
     is_active: bool = True,
     notes: str = "",
     embedding_vector=None,
-    consultation_id: int = None,
+    consultation_id: str = None,
 ):
     """Creates a new record for a user's permanent/chronic health condition."""
     # Convert NumPy array to list for pgvector compatibility
@@ -280,14 +291,14 @@ def add_user_condition(
     db.refresh(condition)
     return condition
 
-def get_condition_by_id(db: Session, condition_id: int):
+def get_condition_by_id(db: Session, condition_id: str):
     """Retrieves a user condition by its ID."""
     return db.query(models.UserCondition).filter(models.UserCondition.id == condition_id).first()
 
 
 def update_user_condition(
     db: Session,
-    condition_id: int,
+    condition_id: str,
     new_status: bool,
     notes: str = None
 ):
@@ -302,7 +313,7 @@ def update_user_condition(
     return condition
 
 # NOTE:
-def delete_user_condition(db: Session, condition_id: int):
+def delete_user_condition(db: Session, condition_id: str):
     """Deletes a permanent condition record."""
     condition = db.query(models.UserCondition).filter(models.UserCondition.id == condition_id).first()
     if condition:
@@ -320,7 +331,7 @@ def add_vitals_entry(
     metric_name: str,
     metric_value: float,
     timestamp: DateTime = None,
-    consultation_id: int = None,
+    consultation_id: str = None,
 ):
     """Adds a single measurement point (e.g., heart rate at a specific time) for a user."""
     if timestamp is None:
@@ -396,7 +407,7 @@ def semantic_search_records(
     db: Session, 
     user_id: str, 
     query_embedding, # MUST be a 1D NumPy array/list
-    current_consultation_id: int = None,
+    current_consultation_id: str = None,
     k_consultations: int = int(os.environ.get("SEMANTIC_SEARCH_K_CONSULTATIONS", 20)),
     k_conditions: int = int(os.environ.get("SEMANTIC_SEARCH_K_CONDITIONS", 20)),
     SIMILARITY_THRESHOLD_VALUE: float = SIMILARITY_THRESHOLD,

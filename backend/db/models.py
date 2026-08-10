@@ -31,10 +31,10 @@ class User(Base):
 class Consultation(Base):
     __tablename__ = "consultations"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
     user_id = Column(String(36), ForeignKey("users.id"))
     heading = Column(String(255), default="") 
-    reference = Column(Integer, ForeignKey("consultations.id"), nullable=True)
+    reference = Column(String(36), ForeignKey("consultations.id"), nullable=True)
     summary = Column(Text, default="")
     embedding_vector = Column(Vector(VECTOR_DIMENSION), nullable=True)
     created_at = Column(DateTime, default=func.now())  
@@ -55,8 +55,8 @@ class Consultation(Base):
 class ConsultationTimeline(Base):
     __tablename__ = "consultation_timeline"
 
-    id = Column(Integer, primary_key=True, index=True)
-    consultation_id = Column(Integer, ForeignKey("consultations.id"))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    consultation_id = Column(String(36), ForeignKey("consultations.id"))
     user_query = Column(Text) 
     model_response = Column(Text)
     insights = Column(Text, nullable=True)
@@ -69,14 +69,14 @@ class ConsultationTimeline(Base):
 class UserCondition(Base):
     __tablename__ = "user_conditions"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
     
     # Core Link to User
     user_id = Column(String(36), ForeignKey("users.id"), index=True)
     
     # Source Separation
     source_type = Column(String(50), nullable=False)
-    consultation_id = Column(Integer, ForeignKey("consultations.id"), nullable=True)
+    consultation_id = Column(String(36), ForeignKey("consultations.id"), nullable=True)
     
     # Categorization
     condition_type = Column(String(100), nullable=False, index=True)
@@ -101,7 +101,7 @@ class UserCondition(Base):
 class VitalsTimeSeries(Base):
     __tablename__ = "vitals_time_series"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
     
     # Core Link to User
     user_id = Column(String(36), ForeignKey("users.id"), index=True)
@@ -116,7 +116,7 @@ class VitalsTimeSeries(Base):
     metric_value = Column(Numeric(10, 2), nullable=False)
     
     # Optional: Link to a specific consultation
-    consultation_id = Column(Integer, ForeignKey("consultations.id"), nullable=True)
+    consultation_id = Column(String(36), ForeignKey("consultations.id"), nullable=True)
 
     user = relationship("User", back_populates="vitals_entries") 
     consultation = relationship("Consultation", back_populates="vitals_entries")
