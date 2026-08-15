@@ -193,6 +193,10 @@ export default function ConsultationPage() {
           true
         );
         setMessages(prev => [...prev, ...parts]);
+        
+        if (!parts.some(p => p.isTyping)) {
+          setStatus("Awaiting Input");
+        }
       } else {
         alert("Error from AI: " + data.error);
         setStatus("Awaiting Input");
